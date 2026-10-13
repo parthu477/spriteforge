@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "bad_frame_count",
+  "image_file": "bad_fc_aabbcc.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "rows": 1,
+  "columns": 4,
+  "frame_count": 999
+}

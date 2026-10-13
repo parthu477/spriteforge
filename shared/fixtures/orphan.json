@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "orphan_sprite",
+  "image_file": "orphan_sprite_000000.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "rows": 1,
+  "columns": 4,
+  "frame_count": 4
+}

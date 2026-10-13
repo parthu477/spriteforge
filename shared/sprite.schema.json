@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spriteforge.local/schemas/sprite.schema.json",
+  "title": "SpriteMetadata",
+  "description": "Schema v1 — frozen at end of Phase 0. Both Python and C++ test suites reference this file.",
+  "type": "object",
+  "required": ["image_file", "frame_width", "frame_height", "rows", "columns", "frame_count"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "If absent, treated as 1. If > engine version, log warning and try to load."
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name. If absent, use the JSON filename without extension."
+    },
+    "image_file": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}\\.png$",
+      "description": "Filename only (no path separators, no .., no drive letters)."
+    },
+    "frame_width": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096
+    },
+    "frame_height": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "columns": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "frame_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Must be <= rows * columns (cross-field constraint enforced in code, not schema)."
+    },
+    "fps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 8
+    },
+    "loop": {
+      "type": "boolean",
+      "default": true
+    },
+    "source": {
+      "type": "object",
+      "description": "Generation metadata — informational only; the engine ignores it.",
+      "additionalProperties": true,
+      "properties": {
+        "prompt":       { "type": "string" },
+        "style":        { "type": "string" },
+        "seed":         { "type": "integer" },
+        "provider":     { "type": "string" },
+        "model":        { "type": "string" },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "seed_applied": { "type": "boolean" }
+      }
+    }
+  }
+}

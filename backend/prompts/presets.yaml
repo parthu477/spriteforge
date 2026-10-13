@@ -1,0 +1,22 @@
+styles:
+  pixel_art:
+    prefix: "pixel art sprite sheet,"
+    suffix: "transparent background, game asset, 16-bit style, clean edges"
+    negative: "blurry, anti-aliased, photorealistic, 3d render, watermark, text"
+
+  cartoon:
+    prefix: "cartoon sprite sheet,"
+    suffix: "transparent background, flat colors, bold outlines, game asset"
+    negative: "photorealistic, 3d render, blurry, watermark, text, noise"
+
+  painterly:
+    prefix: "painterly illustration sprite sheet,"
+    suffix: "transparent background, textured brushwork, warm colors, game asset"
+    negative: "pixel art, 3d render, blurry, watermark, text"
+
+grid_notes:
+  "1x4":  "4 animation frames in a single row, left to right"
+  "1x6":  "6 animation frames in a single row, left to right"
+  "1x8":  "8 animation frames in a single row, left to right"
+  "2x4":  "8 animation frames in 2 rows of 4 columns"
+  "4x4":  "16 animation frames in a 4x4 grid"

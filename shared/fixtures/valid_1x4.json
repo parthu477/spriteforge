@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "hero_walk",
+  "image_file": "hero_walk_aabbcc.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "rows": 1,
+  "columns": 4,
+  "frame_count": 4,
+  "fps": 8,
+  "loop": true,
+  "source": {
+    "prompt": "a pixel art hero walking right",
+    "style": "pixel_art",
+    "seed": 42,
+    "provider": "cloudflare",
+    "model": "@cf/black-forest-labs/flux-1-schnell",
+    "generated_at": "2026-10-07T12:00:00Z"
+  }
+}

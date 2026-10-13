@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+*.so
+*.pyd
+*.egg
+.eggs/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Environment
+.env
+!.env.example
+*.env.local
+
+# Models (large binary files)
+models/
+
+# Assets (generated, not source)
+assets/sprites/*
+!assets/sprites/.gitkeep
+
+# C++ build artifacts
+engine/build/
+engine/cmake-build*/
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.a
+*.pdb
+*.ilk
+*.exp
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+*.user
+*.suo
+*.ncb
+*.sdf
+
+# Logs
+backend/logs/
+engine.log
+
+# Spikes (throwaway evaluation scripts - ignore results only)
+spikes/results_*.json

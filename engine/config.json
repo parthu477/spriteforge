@@ -1,0 +1,12 @@
+{
+  "asset_dir": "../assets/sprites",
+  "scan_interval_ms": 500,
+  "default_fps": 8,
+  "max_png_bytes": 20971520,
+  "max_json_bytes": 65536,
+  "window": {
+    "width": 1280,
+    "height": 720,
+    "title": "SpriteForge Engine"
+  }
+}

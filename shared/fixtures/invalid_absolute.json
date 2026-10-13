@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "bad_absolute",
+  "image_file": "C:\\Windows\\win.ini",
+  "frame_width": 64,
+  "frame_height": 64,
+  "rows": 1,
+  "columns": 4,
+  "frame_count": 4
+}

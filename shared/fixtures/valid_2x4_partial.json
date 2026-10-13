@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "knight_idle",
+  "image_file": "knight_idle_112233.png",
+  "frame_width": 128,
+  "frame_height": 128,
+  "rows": 2,
+  "columns": 4,
+  "frame_count": 7,
+  "fps": 10,
+  "loop": true,
+  "source": {
+    "prompt": "a knight idling",
+    "style": "pixel_art",
+    "seed": 99,
+    "provider": "local_cpu",
+    "model": "stabilityai/sd-turbo",
+    "generated_at": "2026-10-08T09:00:00Z"
+  }
+}
