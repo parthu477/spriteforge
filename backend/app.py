@@ -38,13 +38,26 @@ def create_app() -> Flask:
     cfg.validate()
 
     # ── 3. Flask app ────────────────────────────────────────────
+    frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
     app = Flask(
         __name__,
-        template_folder="templates",
-        static_folder="static",
+        template_folder=str(frontend_dir),
+        static_folder=str(frontend_dir),
+        static_url_path="/static",
     )
     app.secret_key = cfg.SECRET_KEY
     app.config["MAX_CONTENT_LENGTH"] = 4 * 1024  # 4 KB request limit
+
+    # Backward compatibility for legacy static paths
+    @app.route("/static/style.css")
+    def legacy_style():
+        from flask import send_from_directory
+        return send_from_directory(str(frontend_dir / "css"), "style.css")
+
+    @app.route("/static/app.js")
+    def legacy_app_js():
+        from flask import send_from_directory
+        return send_from_directory(str(frontend_dir / "js"), "app.js")
 
     # ── 4. Job store ─────────────────────────────────────────────
     global _job_store
