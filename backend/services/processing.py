@@ -44,21 +44,39 @@ def remove_background(
 
     Raises ValueError if alpha coverage is outside [0.01, 0.95].
     """
-    import rembg  # type: ignore
+    if img.mode == "RGBA":
+        a = img.getchannel("A")
+        raw = a.tobytes()
+        total = len(raw)
+        foreground = sum(1 for px in raw if px > 0)
+        coverage = foreground / total
+        if 0.01 <= coverage <= 0.95:
+            _check_alpha(img)
+            return img
 
-    session = _get_rembg_session(rembg_model)
+    result: Image.Image | None = None
+    try:
+        import rembg  # type: ignore
 
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    raw_out = rembg.remove(buf.read(), session=session)
-    result = Image.open(BytesIO(raw_out)).convert("RGBA")
+        session = _get_rembg_session(rembg_model)
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        raw_out = rembg.remove(buf.read(), session=session)
+        result = Image.open(BytesIO(raw_out)).convert("RGBA")
+    except Exception as exc:
+        log.warning("rembg unavailable (%s); using background keying fallback.", exc)
+        rgb = img.convert("RGB")
+        result = Image.new("RGBA", rgb.size, (0, 0, 0, 0))
+        for x in range(rgb.width):
+            for y in range(rgb.height):
+                r, g, b = rgb.getpixel((x, y))
+                if not (r > 245 and g > 245 and b > 245):
+                    result.putpixel((x, y), (r, g, b, 255))
 
     # Alpha threshold clean-up: clamp near-transparent pixels to 0
     if alpha_threshold > 0:
         r, g, b, a = result.split()
-        import PIL.ImageOps as _ops  # noqa: F401 – silence unused warning
-        from PIL import ImageChops
         mask = a.point(lambda px: 0 if px < alpha_threshold else px)
         result.putalpha(mask)
 

@@ -82,5 +82,8 @@ def get_provider(name: str) -> ImageProvider:
     elif name == "huggingface":
         from .huggingface import HuggingFaceProvider
         return HuggingFaceProvider()
+    elif name == "mock":
+        from .mock import MockProvider
+        return MockProvider()
     else:
         raise ValueError(f"Unknown provider: {name!r}")

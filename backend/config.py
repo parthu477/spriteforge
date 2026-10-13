@@ -111,7 +111,7 @@ class Config:
             )
 
         # Provider credentials (AC 16.1)
-        for provider in {cls.PROVIDER, cls.FALLBACK_PROVIDER} - {"", "none"}:
+        for provider in {cls.PROVIDER, cls.FALLBACK_PROVIDER} - {"", "none", "mock"}:
             if provider == "cloudflare":
                 if not cls.CF_ACCOUNT_ID or not cls.CF_API_TOKEN:
                     _fatal(

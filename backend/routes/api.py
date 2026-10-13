@@ -110,7 +110,7 @@ def _run_job(
             image = provider_obj.generate(positive, negative, width, height, seed)
             provider_used = cfg.PROVIDER
             model_used = provider_obj.model
-        except (ProviderQuotaExceeded, ProviderUnavailable) as exc:
+        except (ProviderQuotaExceeded, ProviderUnavailable, ProviderAuthError, ProviderRateLimited, ProviderError) as exc:
             log.warning("Primary provider failed (%s), trying fallback.", exc, extra=extra)
             if not cfg.FALLBACK_PROVIDER or cfg.FALLBACK_PROVIDER == cfg.PROVIDER:
                 raise
