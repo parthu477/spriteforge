@@ -38,6 +38,47 @@ class TestUIEndpoint:
         assert b"SpriteForge" in resp.data
         assert b"csrf-token" in resp.data
 
+    def test_animation_previewer_elements_present(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        content = resp.data.decode("utf-8")
+        # AC 21.1: Canvas in result-card
+        assert 'id="animation-canvas"' in content
+        assert 'id="canvas-viewport"' in content
+        # AC 21.2: Playback controls and Scrubber
+        assert 'id="btn-play-pause"' in content
+        assert 'id="btn-step-prev"' in content
+        assert 'id="btn-step-next"' in content
+        assert 'id="frame-scrubber"' in content
+        # AC 21.3: FPS slider
+        assert 'id="fps-slider"' in content
+        # AC 21.4: Zoom buttons
+        assert 'data-zoom="1"' in content
+        assert 'data-zoom="2"' in content
+        assert 'data-zoom="4"' in content
+        assert 'data-zoom="8"' in content
+        # AC 21.5: Background theme buttons
+        assert 'data-theme="checkered"' in content
+        assert 'data-theme="dark"' in content
+        assert 'data-theme="light"' in content
+        assert 'data-theme="stage"' in content
+
+    def test_static_assets_serve_previewer_code(self, client):
+        css_resp = client.get("/static/css/style.css")
+        assert css_resp.status_code == 200
+        css = css_resp.data.decode("utf-8")
+        assert "animation-previewer" in css
+        assert "image-rendering: pixelated" in css
+        assert "theme-checkered" in css
+        assert "theme-stage" in css
+
+        js_resp = client.get("/static/js/app.js")
+        assert js_resp.status_code == 200
+        js = js_resp.data.decode("utf-8")
+        assert "SpriteAnimationPlayer" in js
+        assert "animationPlayer.mount" in js
+
+
 
 class TestGenerateEndpoint:
     def test_csrf_missing_forbidden(self, client):
