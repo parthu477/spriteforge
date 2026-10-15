@@ -31,8 +31,10 @@ const statusSpinner = document.getElementById('status-spinner');
 const progressStages = document.getElementById('progress-stages');
 const resultCard = document.getElementById('result-card');
 const resultImg = document.getElementById('result-img');
-const resultMeta = document.getElementById('result-meta');
-const downloadBtn = document.getElementById('download-btn');
+const exportDropdown = document.getElementById('export-dropdown');
+const exportDropdownBtn = document.getElementById('export-dropdown-btn');
+const exportMenu = document.getElementById('export-menu');
+const exportOptions = document.querySelectorAll('.export-option');
 const rerollBtn = document.getElementById('reroll-btn');
 const galleryGrid = document.getElementById('gallery-grid');
 const refreshGallery = document.getElementById('refresh-gallery');
@@ -65,6 +67,11 @@ let currentJobId = null;
 let pollTimer = null;
 let activeEventSource = null;
 let lastPromptData = null;
+let currentActiveSprite = {
+  name: '',
+  imageUrl: '',
+  metadata: null,
+};
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -537,8 +544,11 @@ function onJobDone(data) {
   resultCard.hidden = false;
   const fullUrl = data.preview_url + '?t=' + Date.now();
   resultImg.src = fullUrl;
-  downloadBtn.href = data.preview_url;
-  downloadBtn.download = data.metadata?.image_file || 'sprite.png';
+  currentActiveSprite = {
+    name: data.metadata?.name || 'sprite',
+    imageUrl: data.preview_url,
+    metadata: data.metadata,
+  };
   resultMeta.textContent = JSON.stringify({
     name: data.metadata?.name,
     frames: data.metadata?.frame_count,
@@ -649,10 +659,13 @@ async function loadGallery() {
         // Mount and animate in player
         animationPlayer.mount(sprite.image_url, sprite.metadata, sprite.name);
 
-        // Update full sheet preview and download/meta
+        // Update full sheet preview and active sprite
+        currentActiveSprite = {
+          name: sprite.name,
+          imageUrl: sprite.image_url,
+          metadata: sprite.metadata,
+        };
         resultImg.src = sprite.image_url;
-        downloadBtn.href = sprite.image_url;
-        downloadBtn.download = sprite.metadata?.image_file || `${sprite.name}.png`;
         resultMeta.textContent = JSON.stringify({
           name: sprite.name,
           frames: sprite.metadata?.frame_count,
@@ -726,6 +739,67 @@ async function loadGallery() {
 }
 
 refreshGallery.addEventListener('click', loadGallery);
+
+// ── Export Dropdown Logic (US-24, AC 24.5) ─────────────────────
+function openExportMenu() {
+  if (!exportMenu || !exportDropdownBtn) return;
+  exportMenu.hidden = false;
+  exportDropdownBtn.setAttribute('aria-expanded', 'true');
+}
+
+function closeExportMenu() {
+  if (!exportMenu || !exportDropdownBtn) return;
+  exportMenu.hidden = true;
+  exportDropdownBtn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleExportMenu() {
+  if (!exportMenu) return;
+  if (exportMenu.hidden) {
+    openExportMenu();
+  } else {
+    closeExportMenu();
+  }
+}
+
+function downloadExport(format) {
+  if (!currentActiveSprite || !currentActiveSprite.name) return;
+  const spriteName = currentActiveSprite.name;
+  const exportUrl = `/api/sprites/${encodeURIComponent(spriteName)}/export/${format}`;
+
+  const a = document.createElement('a');
+  a.href = exportUrl;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+exportDropdownBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleExportMenu();
+});
+
+exportOptions?.forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const format = btn.dataset.format;
+    downloadExport(format);
+    closeExportMenu();
+  });
+});
+
+document.addEventListener('click', (e) => {
+  if (!exportDropdown?.contains(e.target)) {
+    closeExportMenu();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeExportMenu();
+  }
+});
 
 // ── Init ──────────────────────────────────────────────────────
 loadGallery();

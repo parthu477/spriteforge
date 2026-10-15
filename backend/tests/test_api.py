@@ -77,6 +77,23 @@ class TestUIEndpoint:
         js = js_resp.data.decode("utf-8")
         assert "SpriteAnimationPlayer" in js
         assert "animationPlayer.mount" in js
+        assert "export-dropdown" in css
+        assert "export-option" in css
+        assert "downloadExport" in js
+
+    def test_export_dropdown_elements_present(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        content = resp.data.decode("utf-8")
+        # AC 24.5: Export dropdown and options
+        assert 'id="export-dropdown"' in content
+        assert 'id="export-dropdown-btn"' in content
+        assert 'id="export-menu"' in content
+        assert 'data-format="png"' in content
+        assert 'data-format="godot"' in content
+        assert 'data-format="unity"' in content
+        assert 'data-format="gif"' in content
+        assert 'data-format="aseprite"' in content
 
 
 
@@ -259,3 +276,73 @@ class TestSpritesEndpoint:
             headers={"X-CSRF-Token": "valid_token", "Origin": "http://127.0.0.1:5000"},
         )
         assert resp.status_code == 204
+
+
+class TestExportEndpoints:
+    def test_export_invalid_format(self, client):
+        resp = client.get("/api/sprites/nonexistent/export/bmp")
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "invalid_format"
+
+    def test_export_nonexistent_sprite(self, client):
+        resp = client.get("/api/sprites/nonexistent_sprite_123/export/png")
+        assert resp.status_code == 404
+
+    def test_export_all_formats_success(self, client, tmp_path, monkeypatch):
+        from backend.config import cfg
+        from PIL import Image
+
+        monkeypatch.setattr(cfg, "ASSET_DIR", tmp_path)
+
+        img = Image.new("RGBA", (128, 32), (255, 0, 0, 255))
+        img.save(tmp_path / "dragon_walk.png")
+        meta = {
+            "name": "dragon_walk",
+            "image_file": "dragon_walk.png",
+            "frame_width": 32,
+            "frame_height": 32,
+            "rows": 1,
+            "columns": 4,
+            "frame_count": 4,
+            "fps": 8,
+            "loop": True,
+        }
+        (tmp_path / "dragon_walk.json").write_text(json.dumps(meta), encoding="utf-8")
+
+        # AC 24.5: PNG Export
+        resp_png = client.get("/api/sprites/dragon_walk/export/png")
+        assert resp_png.status_code == 200
+        assert resp_png.mimetype == "image/png"
+        assert "attachment" in resp_png.headers.get("Content-Disposition", "")
+
+        # AC 24.1: Godot 4 (.tres) Export
+        resp_godot = client.get("/api/sprites/dragon_walk/export/godot")
+        assert resp_godot.status_code == 200
+        assert "attachment" in resp_godot.headers.get("Content-Disposition", "")
+        assert "SpriteFrames" in resp_godot.data.decode("utf-8")
+
+        # AC 24.2: Unity (.meta) Export
+        resp_unity = client.get("/api/sprites/dragon_walk/export/unity")
+        assert resp_unity.status_code == 200
+        assert "attachment" in resp_unity.headers.get("Content-Disposition", "")
+        meta_content = resp_unity.data.decode("utf-8")
+        assert "TextureImporter:" in meta_content
+        assert "filterMode: 0" in meta_content
+
+        # AC 24.3: Animated GIF Export
+        resp_gif = client.get("/api/sprites/dragon_walk/export/gif")
+        assert resp_gif.status_code == 200
+        assert resp_gif.mimetype == "image/gif"
+        assert "attachment" in resp_gif.headers.get("Content-Disposition", "")
+        assert resp_gif.data.startswith(b"GIF89a")
+
+        # AC 24.4: Aseprite (JSON) Export
+        resp_ase = client.get("/api/sprites/dragon_walk/export/aseprite")
+        assert resp_ase.status_code == 200
+        assert resp_ase.mimetype == "application/json"
+        assert "attachment" in resp_ase.headers.get("Content-Disposition", "")
+        ase_data = json.loads(resp_ase.data.decode("utf-8"))
+        assert len(ase_data["frames"]) == 4
+        assert ase_data["meta"]["app"] == "SpriteForge"
+

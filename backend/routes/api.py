@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, request, send_from_directory, Response
+from flask import Blueprint, jsonify, request, send_from_directory, send_file, Response
 import datetime
+import io
 import json
 import logging
 import os
@@ -22,7 +23,14 @@ from backend.services.providers.base import (
 )
 from backend.services.prompt_builder import build_prompt
 from backend.services.processing import remove_background, normalise_grid, build_metadata
-from backend.services.exporter import export_sprite, delete_sprite
+from backend.services.exporter import (
+    export_sprite,
+    delete_sprite,
+    generate_godot_tres,
+    generate_unity_meta,
+    generate_gif,
+    generate_aseprite_json,
+)
 
 log = logging.getLogger(__name__)
 
@@ -274,9 +282,160 @@ def list_sprites():
 @api_bp.route("/sprites/<path:filename>", methods=["GET"])
 def serve_sprite(filename: str):
     import re
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,70}\.png", filename):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,70}\.(png|tres|meta|gif|json)", filename):
         return jsonify({"error": "not_found"}), 404
     return send_from_directory(str(cfg.ASSET_DIR), filename)
+
+
+# ── GET /api/sprites/<name>/export/<fmt> (US-24) ──────────────
+
+@api_bp.route("/sprites/<name>/export/<fmt>", methods=["GET"])
+def export_sprite_format(name: str, fmt: str):
+    import re
+    cleaned_name = re.sub(r"\.(png|json|tres|meta|gif)$", "", name, flags=re.I)
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,70}", cleaned_name):
+        return jsonify({"error": "not_found"}), 404
+
+    fmt = fmt.lower()
+    valid_fmts = {"png", "godot", "tres", "unity", "meta", "gif", "aseprite", "json"}
+    if fmt not in valid_fmts:
+        return jsonify({"error": "invalid_format", "message": f"Unsupported format '{fmt}'"}), 400
+
+    # Locate metadata file
+    meta_path = None
+    metadata = None
+
+    if (cfg.ASSET_DIR / f"{cleaned_name}.json").exists():
+        meta_path = cfg.ASSET_DIR / f"{cleaned_name}.json"
+    else:
+        # Search by exact name property or prefix glob
+        for jf in sorted(cfg.ASSET_DIR.glob("*.json")):
+            try:
+                m = json.loads(jf.read_text(encoding="utf-8"))
+                if (
+                    m.get("name") == cleaned_name
+                    or jf.stem == cleaned_name
+                    or m.get("image_file") == f"{cleaned_name}.png"
+                    or jf.stem.startswith(f"{cleaned_name}_")
+                ):
+                    meta_path = jf
+                    metadata = m
+                    break
+            except Exception:
+                continue
+
+    if not meta_path or not meta_path.exists():
+        return jsonify({"error": "not_found", "message": f"Sprite '{cleaned_name}' not found"}), 404
+
+    if metadata is None:
+        try:
+            metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            return jsonify({"error": "corrupt_metadata", "message": str(exc)}), 500
+
+    image_file = metadata.get("image_file", f"{meta_path.stem}.png")
+    image_path = cfg.ASSET_DIR / image_file
+    if not image_path.exists():
+        return jsonify({"error": "image_not_found"}), 404
+
+    slug = metadata.get("name", meta_path.stem)
+    stem = meta_path.stem
+
+    # AC 24.5 - Download PNG
+    if fmt == "png":
+        return send_from_directory(
+            str(cfg.ASSET_DIR),
+            image_file,
+            as_attachment=True,
+            download_name=image_file,
+            mimetype="image/png",
+        )
+
+    # AC 24.1 - Godot 4 (.tres)
+    elif fmt in ("godot", "tres"):
+        tres_path = cfg.ASSET_DIR / f"{stem}.tres"
+        if tres_path.exists():
+            return send_from_directory(
+                str(cfg.ASSET_DIR),
+                tres_path.name,
+                as_attachment=True,
+                download_name=f"{slug}.tres",
+                mimetype="text/plain",
+            )
+        tres_content = generate_godot_tres(metadata)
+        return send_file(
+            io.BytesIO(tres_content.encode("utf-8")),
+            as_attachment=True,
+            download_name=f"{slug}.tres",
+            mimetype="text/plain",
+        )
+
+    # AC 24.2 - Unity (.meta)
+    elif fmt in ("unity", "meta"):
+        meta_file = cfg.ASSET_DIR / f"{image_file}.meta"
+        if meta_file.exists():
+            return send_from_directory(
+                str(cfg.ASSET_DIR),
+                meta_file.name,
+                as_attachment=True,
+                download_name=f"{image_file}.meta",
+                mimetype="text/yaml",
+            )
+        from PIL import Image
+        with Image.open(image_path) as img:
+            iw, ih = img.size
+        meta_content = generate_unity_meta(metadata, image_width=iw, image_height=ih)
+        return send_file(
+            io.BytesIO(meta_content.encode("utf-8")),
+            as_attachment=True,
+            download_name=f"{image_file}.meta",
+            mimetype="text/yaml",
+        )
+
+    # AC 24.3 - Animated GIF
+    elif fmt == "gif":
+        gif_file = cfg.ASSET_DIR / f"{stem}.gif"
+        if gif_file.exists():
+            return send_from_directory(
+                str(cfg.ASSET_DIR),
+                gif_file.name,
+                as_attachment=True,
+                download_name=f"{slug}.gif",
+                mimetype="image/gif",
+            )
+        from PIL import Image
+        with Image.open(image_path) as img:
+            gif_bytes = generate_gif(img, metadata)
+        return send_file(
+            io.BytesIO(gif_bytes),
+            as_attachment=True,
+            download_name=f"{slug}.gif",
+            mimetype="image/gif",
+        )
+
+    # AC 24.4 - Aseprite (JSON)
+    elif fmt in ("aseprite", "json"):
+        aseprite_file = cfg.ASSET_DIR / f"{stem}_aseprite.json"
+        if aseprite_file.exists():
+            return send_from_directory(
+                str(cfg.ASSET_DIR),
+                aseprite_file.name,
+                as_attachment=True,
+                download_name=f"{slug}_aseprite.json",
+                mimetype="application/json",
+            )
+        from PIL import Image
+        with Image.open(image_path) as img:
+            iw, ih = img.size
+        aseprite_dict = generate_aseprite_json(metadata, image_width=iw, image_height=ih)
+        payload = json.dumps(aseprite_dict, indent=2).encode("utf-8")
+        return send_file(
+            io.BytesIO(payload),
+            as_attachment=True,
+            download_name=f"{slug}_aseprite.json",
+            mimetype="application/json",
+        )
+
 
 
 # ── DELETE /api/sprites/<name> ────────────────────────────────
