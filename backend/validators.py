@@ -10,6 +10,19 @@ from typing import Any
 
 VALID_GRIDS = {"1x4", "1x6", "1x8", "2x4", "4x4"}
 VALID_STYLES = {"pixel_art", "cartoon", "painterly"}
+VALID_PALETTES = {
+    "original",
+    "pico-8",
+    "pico8",
+    "pico_8",
+    "gameboy",
+    "game-boy",
+    "game_boy",
+    "nes",
+    "endesga-32",
+    "endesga32",
+    "endesga_32",
+}
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 MAX_SEED = 4_294_967_295
 
@@ -68,6 +81,20 @@ def validate_generate(data: dict[str, Any]) -> dict[str, str]:
             errors["multi_action"] = "multi_action must be a boolean."
         elif multi_action and grid != "4x4":
             errors["grid"] = "Multi-action mode requires a 4x4 grid."
+
+    # palette (optional, US-22)
+    palette = data.get("palette")
+    if palette is not None:
+        if not isinstance(palette, str):
+            errors["palette"] = "Palette must be a string."
+        elif palette.lower().strip() not in VALID_PALETTES:
+            errors["palette"] = f"Palette must be one of: {', '.join(sorted(VALID_PALETTES))}."
+
+    # outline (optional, US-22)
+    outline = data.get("outline")
+    if outline is not None:
+        if not isinstance(outline, bool):
+            errors["outline"] = "Outline must be a boolean."
 
     return errors
 

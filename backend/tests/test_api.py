@@ -108,6 +108,20 @@ class TestUIEndpoint:
         assert "Row 2: Attack" in content
         assert "Row 3: Hurt" in content
 
+    def test_palette_and_outline_ui_elements(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        content = resp.data.decode("utf-8")
+        # AC 22.4: Palette dropdown and outline toggle
+        assert 'id="palette-select"' in content
+        assert 'value="original"' in content
+        assert 'value="pico-8"' in content
+        assert 'value="gameboy"' in content
+        assert 'value="nes"' in content
+        assert 'value="endesga-32"' in content
+        assert 'id="outline-toggle"' in content
+
+
 
 
 class TestGenerateEndpoint:
@@ -255,7 +269,72 @@ class TestGenerateEndpoint:
         # AC 23.4 backward compatibility
         assert "animations" not in job.metadata
 
+    def test_palette_and_outline_request_accepted(self, client):
+        with client.session_transaction() as sess:
+            sess["csrf_token"] = "valid_token"
 
+        resp = client.post(
+            "/api/generate",
+            json={
+                "prompt": "pixel rogue",
+                "grid": "1x4",
+                "style": "pixel_art",
+                "palette": "pico-8",
+                "outline": True,
+            },
+            headers={"X-CSRF-Token": "valid_token", "Origin": "http://127.0.0.1:5000"},
+        )
+        assert resp.status_code == 202
+        data = resp.get_json()
+        assert "job_id" in data
+        assert data["status"] == "queued"
+
+    def test_invalid_palette_rejected(self, client):
+        with client.session_transaction() as sess:
+            sess["csrf_token"] = "valid_token"
+
+        resp = client.post(
+            "/api/generate",
+            json={
+                "prompt": "pixel rogue",
+                "grid": "1x4",
+                "style": "pixel_art",
+                "palette": "unknown-pal",
+            },
+            headers={"X-CSRF-Token": "valid_token", "Origin": "http://127.0.0.1:5000"},
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "validation_error"
+        assert "palette" in data["fields"]
+
+    def test_postprocessing_job_records_source_metadata(self, monkeypatch):
+        from backend.routes.api import _run_job, _job_store, cfg
+
+        monkeypatch.setattr(cfg, "PROVIDER", "mock")
+        monkeypatch.setattr(cfg, "FALLBACK_PROVIDER", "none")
+
+        job_id = _job_store.enqueue(lambda jid: None)
+        assert job_id is not None
+
+        _run_job(
+            job_id=job_id,
+            short_id=job_id[:6],
+            prompt="pixel rogue",
+            name="rogue",
+            style="pixel_art",
+            seed=42,
+            rows=1,
+            columns=4,
+            palette="pico-8",
+            outline=True,
+        )
+
+        job = _job_store.get(job_id)
+        assert job.status == "done"
+        assert job.metadata is not None
+        assert job.metadata["source"]["palette"] == "pico-8"
+        assert job.metadata["source"]["outline"] is True
 
 
 class TestJobStatus:

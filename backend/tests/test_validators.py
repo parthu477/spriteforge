@@ -82,6 +82,31 @@ class TestValidateGenerate:
         errors = validate_generate(data)
         assert "grid" in errors
 
+    def test_valid_palettes(self):
+        for p in ("original", "pico-8", "pico8", "gameboy", "nes", "endesga-32"):
+            data = {**self._valid(), "palette": p}
+            assert validate_generate(data) == {}
+
+    def test_invalid_palette_rejected(self):
+        data = {**self._valid(), "palette": "cyberpunk_neon"}
+        errors = validate_generate(data)
+        assert "palette" in errors
+
+    def test_non_string_palette_rejected(self):
+        data = {**self._valid(), "palette": 12345}
+        errors = validate_generate(data)
+        assert "palette" in errors
+
+    def test_valid_outline_boolean(self):
+        assert validate_generate({**self._valid(), "outline": True}) == {}
+        assert validate_generate({**self._valid(), "outline": False}) == {}
+
+    def test_non_boolean_outline_rejected(self):
+        data = {**self._valid(), "outline": "true"}
+        errors = validate_generate(data)
+        assert "outline" in errors
+
+
 
 class TestSlugify:
     def test_simple(self):
