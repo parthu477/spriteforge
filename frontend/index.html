@@ -105,7 +105,87 @@
       </div>
       <div class="progress-stages" id="progress-stages"></div>
       <div id="result-card" class="result-card" hidden>
-        <img id="result-img" src="" alt="Generated sprite sheet" class="result-img">
+        <!-- Animation Previewer (US-21) -->
+        <div class="animation-previewer" id="animation-previewer">
+          <!-- Top bar: Header & Theme Switcher (AC 21.5) -->
+          <div class="previewer-header">
+            <div class="previewer-title-wrap">
+              <span class="previewer-live-dot" aria-hidden="true">●</span>
+              <span class="previewer-title">Live Animation Preview</span>
+              <span id="preview-sprite-name" class="preview-sprite-name"></span>
+            </div>
+            <div class="theme-switcher-wrap">
+              <span class="control-label-sm">BG:</span>
+              <div class="theme-switcher" role="group" aria-label="Canvas background theme">
+                <button type="button" class="btn-theme active" data-theme="checkered" title="Checkered transparency pattern">🏁 Checkered</button>
+                <button type="button" class="btn-theme" data-theme="dark" title="Dark theme">🌑 Dark</button>
+                <button type="button" class="btn-theme" data-theme="light" title="Light theme">☀️ Light</button>
+                <button type="button" class="btn-theme" data-theme="stage" title="Game Stage theme">🎮 Game Stage</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Canvas Viewport with crisp pixel scaling (AC 21.1, AC 21.4, AC 21.5) -->
+          <div id="canvas-viewport" class="canvas-viewport theme-checkered">
+            <canvas id="animation-canvas" class="animation-canvas" width="128" height="128" aria-label="Sprite animation preview"></canvas>
+          </div>
+
+          <!-- Playback Controls (AC 21.2, AC 21.3, AC 21.4) -->
+          <div class="player-controls">
+            <!-- Timeline Scrubber -->
+            <div class="scrubber-row">
+              <label for="frame-scrubber" class="sr-only">Frame Scrubber Timeline</label>
+              <input type="range" id="frame-scrubber" class="frame-scrubber" min="0" max="3" value="0" step="1" title="Drag to scrub frames">
+              <div class="scrubber-labels">
+                <span id="frame-counter" class="frame-counter">Frame: 1 / 4</span>
+                <span id="frame-timestamp" class="frame-timestamp">0.00s</span>
+              </div>
+            </div>
+
+            <!-- Primary Buttons & Secondary Controls -->
+            <div class="controls-toolbar">
+              <!-- Play / Step buttons -->
+              <div class="playback-buttons" role="group" aria-label="Animation playback">
+                <button type="button" id="btn-step-prev" class="btn-playback" title="Step Backward (Previous Frame)" aria-label="Step Backward">
+                  ⏮ Prev
+                </button>
+                <button type="button" id="btn-play-pause" class="btn-playback btn-play-main" title="Play or Pause" aria-label="Play or Pause">
+                  <span id="play-pause-icon">⏸</span>
+                  <span id="play-pause-text">Pause</span>
+                </button>
+                <button type="button" id="btn-step-next" class="btn-playback" title="Step Forward (Next Frame)" aria-label="Step Forward">
+                  Next ⏭
+                </button>
+              </div>
+
+              <!-- FPS Slider (AC 21.3) -->
+              <div class="control-group fps-group">
+                <label for="fps-slider" class="control-label">Speed: <span id="fps-badge" class="badge-value">8 FPS</span></label>
+                <input type="range" id="fps-slider" class="fps-slider" min="1" max="60" value="8" step="1">
+              </div>
+
+              <!-- Zoom Buttons (AC 21.4) -->
+              <div class="control-group zoom-group">
+                <span class="control-label">Zoom:</span>
+                <div class="zoom-buttons" role="group" aria-label="Pixel zoom scaling">
+                  <button type="button" class="btn-zoom" data-zoom="1">1x</button>
+                  <button type="button" class="btn-zoom active" data-zoom="2">2x</button>
+                  <button type="button" class="btn-zoom" data-zoom="4">4x</button>
+                  <button type="button" class="btn-zoom" data-zoom="8">8x</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Full Sheet Collapsible View -->
+        <details class="sheet-details">
+          <summary class="sheet-summary"><span>🖼 View Full Sprite Sheet</span></summary>
+          <div class="sheet-container">
+            <img id="result-img" src="" alt="Generated sprite sheet" class="result-img">
+          </div>
+        </details>
+
         <div class="result-meta" id="result-meta"></div>
         <div class="result-actions">
           <a id="download-btn" href="#" download class="btn-secondary">⬇ Download</a>

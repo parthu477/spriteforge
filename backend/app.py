@@ -47,6 +47,8 @@ def create_app() -> Flask:
     )
     app.secret_key = cfg.SECRET_KEY
     app.config["MAX_CONTENT_LENGTH"] = 4 * 1024  # 4 KB request limit
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+
 
     # Backward compatibility for legacy static paths
     @app.route("/static/style.css")
