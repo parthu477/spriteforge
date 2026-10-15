@@ -101,7 +101,14 @@
     <section id="result-section" class="result-section" hidden aria-live="polite">
       <div class="status-bar">
         <div class="status-spinner" id="status-spinner"></div>
-        <span id="status-text" class="status-text">Processing…</span>
+        <div class="status-info">
+          <span id="status-text" class="status-text">Processing…</span>
+          <span id="progress-eta" class="progress-eta" hidden></span>
+        </div>
+        <span id="progress-percent" class="progress-percent">0%</span>
+      </div>
+      <div class="progress-bar-container" id="progress-bar-container" role="progressbar" aria-label="Generation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="progress-bar-fill" id="progress-bar-fill"></div>
       </div>
       <div class="progress-stages" id="progress-stages"></div>
       <div id="result-card" class="result-card" hidden>

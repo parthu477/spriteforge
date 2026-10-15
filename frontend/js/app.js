@@ -38,6 +38,9 @@ const galleryGrid = document.getElementById('gallery-grid');
 const refreshGallery = document.getElementById('refresh-gallery');
 const randomSeedBtn = document.getElementById('random-seed-btn');
 const seedInput = document.getElementById('seed-input');
+const progressPercent = document.getElementById('progress-percent');
+const progressEta = document.getElementById('progress-eta');
+const progressBarFill = document.getElementById('progress-bar-fill');
 
 // ── Char counter ──────────────────────────────────────────────
 promptInput.addEventListener('input', () => {
@@ -57,9 +60,10 @@ randomSeedBtn.addEventListener('click', () => {
   seedInput.value = Math.floor(Math.random() * 4294967295);
 });
 
-// ── Form submission ───────────────────────────────────────────
+// ── Form submission & job streaming ───────────────────────────
 let currentJobId = null;
 let pollTimer = null;
+let activeEventSource = null;
 let lastPromptData = null;
 
 form.addEventListener('submit', async (e) => {
@@ -110,7 +114,7 @@ async function submitJob(body) {
     }
 
     currentJobId = data.job_id;
-    pollJob(currentJobId);
+    trackJob(currentJobId);
   } catch (err) {
     setGenerating(false);
     showError('Network error: ' + err.message);
@@ -118,11 +122,83 @@ async function submitJob(body) {
   }
 }
 
+function cleanupTracking() {
+  if (activeEventSource) {
+    try {
+      activeEventSource.close();
+    } catch (_) {}
+    activeEventSource = null;
+  }
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+}
+
+function trackJob(jobId) {
+  cleanupTracking();
+  // AC 25.4: Use EventSource with fallback to HTTP polling
+  if (typeof window.EventSource !== 'undefined') {
+    startSSE(jobId);
+  } else {
+    pollJob(jobId);
+  }
+}
+
+function startSSE(jobId) {
+  let isDoneOrFailed = false;
+  let es;
+  try {
+    es = new EventSource(`/api/jobs/${jobId}/stream`);
+  } catch (err) {
+    console.warn('Failed to construct EventSource, falling back to polling:', err);
+    pollJob(jobId);
+    return;
+  }
+
+  activeEventSource = es;
+
+  es.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      updateProgress(data);
+
+      if (data.status === 'done') {
+        isDoneOrFailed = true;
+        cleanupTracking(); // AC 25.5: Close connection cleanly upon completion
+        onJobDone(data);
+      } else if (data.status === 'failed') {
+        isDoneOrFailed = true;
+        cleanupTracking(); // AC 25.5: Close connection cleanly upon failure
+        onJobFailed(data);
+      }
+    } catch (parseErr) {
+      console.error('Error parsing SSE event:', parseErr);
+    }
+  };
+
+  es.onerror = (err) => {
+    if (isDoneOrFailed) return;
+    console.warn('SSE connection interrupted or dropped, falling back to HTTP polling.', err);
+    cleanupTracking();
+    // Graceful fallback to HTTP polling (AC 25.4)
+    pollJob(jobId);
+  };
+}
+
 function pollJob(jobId) {
   clearTimeout(pollTimer);
   pollTimer = setTimeout(async () => {
     try {
       const resp = await fetch(`/api/jobs/${jobId}`);
+      if (!resp.ok) {
+        if (resp.status === 404) {
+          onJobFailed({ error: { message: 'Job not found.' } });
+          return;
+        }
+        pollJob(jobId);
+        return;
+      }
       const data = await resp.json();
       updateProgress(data);
 
@@ -140,7 +216,36 @@ function pollJob(jobId) {
 }
 
 function updateProgress(data) {
-  statusText.textContent = data.stage === 'done' ? 'Complete!' : `Stage: ${STAGE_LABELS[data.stage] || data.stage}`;
+  const stageLabel = STAGE_LABELS[data.stage] || data.stage;
+  const pct = Math.min(100, Math.max(0, Math.round(data.progress ?? 0)));
+
+  if (data.status === 'done') {
+    statusText.textContent = 'Complete!';
+  } else if (data.status === 'failed') {
+    statusText.textContent = 'Generation Failed';
+  } else {
+    statusText.textContent = `Stage: ${stageLabel}`;
+  }
+
+  if (progressPercent) {
+    progressPercent.textContent = `${pct}%`;
+  }
+  if (progressBarFill) {
+    progressBarFill.style.width = `${pct}%`;
+    progressBarFill.setAttribute('aria-valuenow', pct);
+  }
+
+  if (progressEta) {
+    const eta = data.eta_seconds ?? data.estimated_remaining_seconds;
+    if (eta !== undefined && eta !== null && data.status !== 'done' && data.status !== 'failed') {
+      const etaNum = parseFloat(eta);
+      progressEta.textContent = etaNum > 0 ? `~${etaNum.toFixed(1)}s left` : '< 1s left';
+      progressEta.hidden = false;
+    } else {
+      progressEta.hidden = true;
+    }
+  }
+
   progressStages.innerHTML = STAGES.map(s => {
     const idx = STAGES.indexOf(s);
     const curIdx = STAGES.indexOf(data.stage);
@@ -153,8 +258,13 @@ function updateProgress(data) {
 }
 
 function onJobDone(data) {
+  cleanupTracking();
   setGenerating(false);
   statusSpinner.style.display = 'none';
+  if (progressPercent) progressPercent.textContent = '100%';
+  if (progressBarFill) progressBarFill.style.width = '100%';
+  if (progressEta) progressEta.hidden = true;
+
   resultCard.hidden = false;
   resultImg.src = data.preview_url + '?t=' + Date.now();
   downloadBtn.href = data.preview_url;
@@ -176,8 +286,10 @@ function onJobDone(data) {
 }
 
 function onJobFailed(data) {
+  cleanupTracking();
   setGenerating(false);
   statusSpinner.style.display = 'none';
+  if (progressEta) progressEta.hidden = true;
   const msg = data.error?.message || 'Generation failed.';
   statusText.textContent = '❌ ' + msg;
   showError(msg);
@@ -195,6 +307,15 @@ function showResult() {
   resultCard.hidden = true;
   statusSpinner.style.display = '';
   statusText.textContent = 'Submitting…';
+  if (progressPercent) progressPercent.textContent = '0%';
+  if (progressBarFill) {
+    progressBarFill.style.width = '0%';
+    progressBarFill.setAttribute('aria-valuenow', 0);
+  }
+  if (progressEta) {
+    progressEta.hidden = true;
+    progressEta.textContent = '';
+  }
   progressStages.innerHTML = '';
   resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }

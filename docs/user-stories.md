@@ -632,6 +632,34 @@
 
 ---
 
+### US-25: Real-Time Server-Sent Events (SSE) Progress Streaming
+- **Story ID:** `US-25`
+- **Track / Phase:** Backend & Frontend / Phase 5 (Enhancements)
+- **Primary Persona:** `PER-1` (Game Developer)
+- **Traceability:** Issue #21, PR #21
+
+#### User Story
+> **As a** user generating sprites,  
+> **I want** live stage transitions and percentage progress streamed over Server-Sent Events (SSE),  
+> **So that** I receive instantaneous feedback without relying on 1500ms HTTP polling.
+
+#### Technical Specifications
+- Endpoint `GET /api/jobs/<job_id>/stream` with `text/event-stream` MIME type.
+- Pub/Sub in-memory queue dispatcher in `JobStore`.
+- Sub-second stage transitions (`queued` -> `generating` -> `removing_background` -> `processing` -> `exporting` -> `done`).
+- Dynamic progress percentage (0% to 100%) and estimated remaining time calculation.
+- Browser `EventSource` subscriber with automatic fallback to 1500ms HTTP polling on disconnect or error.
+- Clean connection closure and memory leak prevention on terminal status or client disconnect.
+
+#### Acceptance Criteria
+- **AC 25.1:** Implement `/api/jobs/<job_id>/stream` endpoint using Server-Sent Events (`text/event-stream`).
+- **AC 25.2:** Push sub-second stage transitions (`queued` -> `generating` -> `removing_background` -> `processing` -> `exporting` -> `done`).
+- **AC 25.3:** Stream generation progress percentage (0% to 100%) and estimated remaining time.
+- **AC 25.4:** Update frontend `app.js` to use `EventSource`, gracefully falling back to HTTP polling if SSE connection drops.
+- **AC 25.5:** Close SSE connections cleanly upon job completion or failure to prevent memory/connection leaks.
+
+---
+
 ## 3. Comprehensive Requirements Traceability Matrix (RTM)
 
 | User Story ID | Title | FR Mapping | NFR Mapping | Security ID | Implementation Phase | Priority | Est. Points |
@@ -656,5 +684,7 @@
 | **US-18** | Sprite Gallery, Re-Roll Seed & Asset Deletion | FR-10.1 – FR-10.3 | NFR-U2 | S-04, S-05 | Phase 5 | Could | 5 |
 | **US-19** | Native Engine Fuzzing & Corrupted Asset Hardening | — | NFR-R1, NFR-P4 | S-09 | Phase 5 | Must | 5 |
 | **US-20** | End-to-End Automated Pipeline Integration Test | — | NFR-P2, NFR-R5 | — | Phase 4 & 5 | Must | 5 |
+| **US-25** | Real-Time Server-Sent Events (SSE) Progress Streaming | FR-07.1, FR-07.3 | NFR-U2, NFR-P2 | S-03, S-07 | Phase 5 | Should | 5 |
 
-**Total Estimated Story Points:** 90 Points (Across 12–15 Working Days)
+**Total Estimated Story Points:** 95 Points (Across 13–16 Working Days)
+

@@ -16,7 +16,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env from the backend directory (or wherever the process is started from)
-load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=False)
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
 
 def _require(key: str) -> str:

@@ -98,6 +98,107 @@ class TestJobStatus:
         assert resp.status_code == 404
 
 
+class TestSSEStream:
+    """Tests for Server-Sent Events (SSE) progress streaming (US-25 / AC 25.1-25.5)."""
+
+    def test_stream_malformed_job_id_404(self, client):
+        resp = client.get("/api/jobs/not-a-valid-id/stream")
+        assert resp.status_code == 404
+
+    def test_stream_unknown_job_404(self, client):
+        resp = client.get("/api/jobs/0123456789abcdef0123456789abcdef/stream")
+        assert resp.status_code == 404
+
+    def test_stream_headers_and_initial_event(self, client):
+        from backend.routes.api import _job_store
+        job_id = _job_store.enqueue(lambda jid: None)
+        assert job_id is not None
+
+        resp = client.get(f"/api/jobs/{job_id}/stream")
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/event-stream"
+        assert "no-cache" in resp.headers.get("Cache-Control", "")
+
+    def test_stream_completed_job_closes_cleanly(self, client):
+        from backend.routes.api import _job_store
+        job_id = _job_store.enqueue(lambda jid: None)
+        _job_store.complete(job_id, {"frame_count": 4}, "/api/sprites/test.png")
+
+        resp = client.get(f"/api/jobs/{job_id}/stream")
+        assert resp.status_code == 200
+
+        # Read the stream chunks
+        raw_events = [c.decode("utf-8") if isinstance(c, bytes) else c for c in resp.response]
+        full_text = "".join(raw_events)
+        assert "data:" in full_text
+
+        # Extract JSON data from first event
+        data_line = [line for line in full_text.splitlines() if line.startswith("data:")][0]
+        event = json.loads(data_line[len("data:"):].strip())
+        assert event["status"] == "done"
+        assert event["stage"] == "done"
+        assert event["progress"] == 100
+        assert event["preview_url"] == "/api/sprites/test.png"
+
+    def test_stream_stage_transitions_and_progress(self, client):
+        from backend.routes.api import _job_store
+        job_id = _job_store.enqueue(lambda jid: None)
+
+        # Emulate stage transitions
+        _job_store.update_stage(job_id, "generating", progress=25, eta_seconds=8.0)
+        _job_store.update_stage(job_id, "removing_background", progress=60, eta_seconds=4.0)
+        _job_store.update_stage(job_id, "processing", progress=80, eta_seconds=2.0)
+        _job_store.update_stage(job_id, "exporting", progress=95, eta_seconds=0.5)
+        _job_store.complete(job_id, {"frame_count": 4}, "/api/sprites/knight.png")
+
+        resp = client.get(f"/api/jobs/{job_id}/stream")
+        raw_events = [c.decode("utf-8") if isinstance(c, bytes) else c for c in resp.response]
+        full_text = "".join(raw_events)
+
+        data_lines = [line for line in full_text.splitlines() if line.startswith("data:")]
+        events = [json.loads(line[len("data:"):].strip()) for line in data_lines]
+        assert len(events) >= 1
+        last_event = events[-1]
+        assert last_event["status"] == "done"
+        assert last_event["progress"] == 100
+        assert last_event["eta_seconds"] == 0.0
+
+    def test_stream_failed_job_closes_cleanly(self, client):
+        from backend.routes.api import _job_store
+        job_id = _job_store.enqueue(lambda jid: None)
+        _job_store.fail(job_id, "generating", "provider_auth", "Invalid API key")
+
+        resp = client.get(f"/api/jobs/{job_id}/stream")
+        raw_events = [c.decode("utf-8") if isinstance(c, bytes) else c for c in resp.response]
+        full_text = "".join(raw_events)
+
+        data_lines = [line for line in full_text.splitlines() if line.startswith("data:")]
+        events = [json.loads(line[len("data:"):].strip()) for line in data_lines]
+        assert len(events) >= 1
+        failed_event = events[-1]
+        assert failed_event["status"] == "failed"
+        assert failed_event["stage"] == "generating"
+        assert failed_event["error"]["code"] == "provider_auth"
+
+    def test_stream_unsubscribe_on_disconnect(self, client):
+        from backend.routes.api import _job_store
+        job_id = _job_store.enqueue(lambda jid: None)
+        # Ensure job is still running so listener would be registered
+        _job_store.update_stage(job_id, "generating")
+
+        resp = client.get(f"/api/jobs/{job_id}/stream")
+        # Trigger iterator once, then close it (simulating client disconnection)
+        it = iter(resp.response)
+        first_chunk = next(it)
+        assert b"data:" in first_chunk or "data:" in str(first_chunk)
+        resp.response.close()
+
+        # Verify listener was removed to prevent memory leak
+        with _job_store._lock:
+            listeners = _job_store._listeners.get(job_id, set())
+            assert len(listeners) == 0
+
+
 class TestSpritesEndpoint:
     def test_list_sprites(self, client):
         resp = client.get("/api/sprites")

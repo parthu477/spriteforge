@@ -1,20 +1,18 @@
 # ==============================================================
 # SpriteForge — services/providers/mock.py
-# Procedural Mock Provider for local testing & demos without API keys
+# Mock / Demo provider for local testing without cloud credentials
 # ==============================================================
 from __future__ import annotations
 
-import math
+import hashlib
 import random
 from PIL import Image, ImageDraw
 
 
 class MockProvider:
-    """Generates procedural pixel-art character sprite sheets for testing."""
-
     name = "mock"
-    model = "procedural-mock-v1"
-    max_side = 1024
+    model = "spriteforge-mock-v1"
+    max_side = 512
     supports_negative_prompt = True
     supports_seed = True
 
@@ -26,131 +24,56 @@ class MockProvider:
         height: int,
         seed: int,
     ) -> Image.Image:
-        rng = random.Random(seed)
-
-        # Detect columns and rows from dimensions or default to 4 frames horizontal
-        cols = 4
-        rows = 1
-        if width > 0 and height > 0:
-            ratio = width / height
-            if ratio >= 3.5:
-                cols, rows = 4, 1
-            elif ratio >= 1.8:
-                cols, rows = 4, 2
-            elif ratio >= 0.9:
-                cols, rows = 2, 2
-            else:
-                cols, rows = 1, 4
-
-        fw = width // cols
-        fh = height // rows
-
-        # Base character colours based on prompt keywords & seed
-        prompt_lower = prompt.lower()
-        if "wizard" in prompt_lower or "mage" in prompt_lower:
-            cloak_color = (130, 60, 220)
-            trim_color = (240, 210, 60)
-            char_type = "wizard"
-        elif "goblin" in prompt_lower or "orc" in prompt_lower:
-            cloak_color = (80, 160, 60)
-            trim_color = (160, 100, 40)
-            char_type = "goblin"
-        elif "skeleton" in prompt_lower or "undead" in prompt_lower:
-            cloak_color = (220, 220, 220)
-            trim_color = (60, 60, 60)
-            char_type = "skeleton"
-        elif "dragon" in prompt_lower or "monster" in prompt_lower:
-            cloak_color = (200, 50, 50)
-            trim_color = (240, 140, 30)
-            char_type = "monster"
-        else:
-            # Default Knight
-            cloak_color = (60, 110, 210)
-            trim_color = (180, 190, 210)
-            char_type = "knight"
-
-        # Create canvas with transparent background
+        # Create transparent RGBA image so no external model download is required
         img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        total_frames = cols * rows
-        for i in range(total_frames):
-            col = i % cols
-            row = i // cols
-            cx = col * fw + fw // 2
-            cy = row * fh + fh // 2
+        rng = random.Random(seed if seed is not None else 42)
+        h = int(hashlib.md5(prompt.encode("utf-8")).hexdigest(), 16)
+        hue_color = (
+            (h & 0xFF),
+            ((h >> 8) & 0xFF),
+            ((h >> 16) & 0xFF),
+        )
+        if sum(hue_color) < 100:
+            hue_color = (220, 100, 80)
 
-            # Walking bobbing motion based on frame
-            walk_phase = (i / total_frames) * math.pi * 2
-            bob = int(math.sin(walk_phase * 2) * (fh * 0.04))
-            leg_swing = int(math.sin(walk_phase) * (fw * 0.12))
+        # Draw a character / sprite representation across the sheet
+        cols = 4
+        rows = 1
+        cw = width // cols
+        ch = height // rows
 
-            char_h = int(fh * 0.65)
-            char_w = int(fw * 0.35)
-            top_y = cy - char_h // 2 + bob
+        for r in range(rows):
+            for c in range(cols):
+                cx = c * cw + cw // 2
+                cy = r * ch + ch // 2
+                frame_idx = r * cols + c
 
-            # Body / Cloak
-            body_top = top_y + int(char_h * 0.3)
-            body_bottom = top_y + int(char_h * 0.75)
-            draw.rectangle(
-                [cx - char_w // 2, body_top, cx + char_w // 2, body_bottom],
-                fill=cloak_color,
-                outline=(30, 30, 30),
-                width=max(1, fw // 64),
-            )
-
-            # Head / Helmet
-            head_size = int(char_w * 0.8)
-            head_x = cx - head_size // 2
-            head_y = top_y
-            draw.rectangle(
-                [head_x, head_y, head_x + head_size, head_y + head_size],
-                fill=trim_color,
-                outline=(30, 30, 30),
-                width=max(1, fw // 64),
-            )
-
-            # Visor / Eyes
-            draw.rectangle(
-                [head_x + head_size // 4, head_y + head_size // 3,
-                 head_x + head_size * 3 // 4, head_y + head_size // 2],
-                fill=(20, 20, 20),
-            )
-
-            # Left Leg
-            leg_w = max(2, char_w // 4)
-            leg_y_top = body_bottom
-            leg_y_bottom = top_y + char_h
-            draw.rectangle(
-                [cx - char_w // 2 + leg_swing, leg_y_top,
-                 cx - char_w // 2 + leg_w + leg_swing, leg_y_bottom],
-                fill=(40, 40, 50),
-                outline=(20, 20, 20),
-            )
-
-            # Right Leg
-            draw.rectangle(
-                [cx + char_w // 2 - leg_w - leg_swing, leg_y_top,
-                 cx + char_w // 2 - leg_swing, leg_y_bottom],
-                fill=(40, 40, 50),
-                outline=(20, 20, 20),
-            )
-
-            # Weapon / Staff
-            sword_x = cx + char_w // 2 + max(2, fw // 32)
-            sword_top = top_y + int(char_h * 0.15) - bob
-            sword_bottom = body_bottom + int(char_h * 0.1)
-            draw.line(
-                [(sword_x, sword_top), (sword_x, sword_bottom)],
-                fill=(200, 200, 210),
-                width=max(2, fw // 48),
-            )
-            # Crossguard
-            draw.line(
-                [(sword_x - max(2, fw // 40), sword_top + int(char_h * 0.2)),
-                 (sword_x + max(2, fw // 40), sword_top + int(char_h * 0.2))],
-                fill=(180, 140, 40),
-                width=max(2, fw // 48),
-            )
+                # Draw head
+                draw.ellipse(
+                    [cx - cw // 6, cy - ch // 3, cx + cw // 6, cy - ch // 12],
+                    fill=(255, 220, 180),
+                )
+                # Draw body
+                draw.rectangle(
+                    [cx - cw // 6, cy - ch // 12, cx + cw // 6, cy + ch // 6],
+                    fill=hue_color,
+                )
+                # Walking legs (animated by frame)
+                leg_swing = (frame_idx % 2) * 8 - 4
+                draw.rectangle(
+                    [cx - cw // 8 + leg_swing, cy + ch // 6, cx - 2 + leg_swing, cy + ch // 3],
+                    fill=(40, 40, 80),
+                )
+                draw.rectangle(
+                    [cx + 2 - leg_swing, cy + ch // 6, cx + cw // 8 - leg_swing, cy + ch // 3],
+                    fill=(40, 40, 80),
+                )
+                # Face/eyes
+                draw.rectangle(
+                    [cx + cw // 16, cy - ch // 4, cx + cw // 10, cy - ch // 5],
+                    fill=(20, 20, 20),
+                )
 
         return img
