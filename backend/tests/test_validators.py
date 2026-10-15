@@ -68,6 +68,20 @@ class TestValidateGenerate:
         errors = validate_generate({**self._valid(), "unknown_key": "ignored"})
         assert errors == {}
 
+    def test_multi_action_valid_4x4(self):
+        data = {**self._valid(), "grid": "4x4", "multi_action": True}
+        assert validate_generate(data) == {}
+
+    def test_multi_action_non_boolean_rejected(self):
+        data = {**self._valid(), "grid": "4x4", "multi_action": "yes"}
+        errors = validate_generate(data)
+        assert "multi_action" in errors
+
+    def test_multi_action_non_4x4_rejected(self):
+        data = {**self._valid(), "grid": "1x4", "multi_action": True}
+        errors = validate_generate(data)
+        assert "grid" in errors
+
 
 class TestSlugify:
     def test_simple(self):

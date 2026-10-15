@@ -117,3 +117,66 @@ class TestBuildMetadata:
             model="sd-turbo", generated_at="2026-01-01T00:00:00Z",
         )
         assert meta["source"]["provider"] == "local_cpu"
+        assert "animations" not in meta
+
+    def test_build_metadata_with_animations(self):
+        animations = {
+            "idle": {"row": 0, "frames": 4, "fps": 8, "loop": True},
+            "walk": {"row": 1, "frames": 4, "fps": 8, "loop": True},
+            "attack": {"row": 2, "frames": 4, "fps": 10, "loop": False},
+            "hurt": {"row": 3, "frames": 4, "fps": 8, "loop": False},
+        }
+        meta = build_metadata(
+            name="hero_sheet", image_file="hero_sheet.png",
+            frame_width=32, frame_height=32,
+            rows=4, columns=4, frame_count=16,
+            prompt="pixel hero knight", style="pixel_art",
+            seed=1234, provider_name="mock",
+            model="mock-v1", generated_at="2026-10-15T00:00:00Z",
+            animations=animations,
+        )
+        assert "animations" in meta
+        assert meta["animations"]["idle"]["row"] == 0
+        assert meta["animations"]["idle"]["frames"] == 4
+        assert meta["animations"]["idle"]["fps"] == 8
+        assert meta["animations"]["idle"]["loop"] is True
+        assert meta["animations"]["hurt"]["row"] == 3
+        assert meta["animations"]["hurt"]["loop"] is False
+
+
+class TestPromptBuilderMultiAction:
+    """AC 23.1: Conditioning 4 distinct action rows with character consistency."""
+
+    def test_multi_action_prompt_conditioning(self):
+        from backend.services.prompt_builder import build_prompt
+
+        pos, neg = build_prompt(
+            user_prompt="cyberpunk ninja warrior",
+            style="pixel_art",
+            rows=4,
+            columns=4,
+            multi_action=True,
+        )
+        # AC 23.1: Rows conditioned
+        assert "Row 0 is Idle" in pos or "Row 0" in pos
+        assert "Row 1 is Walk" in pos or "Row 1" in pos
+        assert "Row 2 is Attack" in pos or "Row 2" in pos
+        assert "Row 3 is Hurt" in pos or "Row 3" in pos
+        # Visual character consistency
+        assert "character consistency" in pos.lower()
+        # Negative prompt has consistency guards
+        assert "inconsistent character" in neg.lower()
+
+    def test_single_row_prompt_does_not_contain_multi_action(self):
+        from backend.services.prompt_builder import build_prompt
+
+        pos, _ = build_prompt(
+            user_prompt="cyberpunk ninja warrior",
+            style="pixel_art",
+            rows=1,
+            columns=4,
+            multi_action=False,
+        )
+        assert "Row 0 is Idle" not in pos
+        assert "Row 3 is Hurt" not in pos
+

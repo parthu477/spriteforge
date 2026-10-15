@@ -20,3 +20,8 @@ grid_notes:
   "1x8":  "8 animation frames in a single row, left to right"
   "2x4":  "8 animation frames in 2 rows of 4 columns"
   "4x4":  "16 animation frames in a 4x4 grid"
+
+multi_action:
+  grid_note: "4x4 character sprite sheet state machine with 4 distinct action rows of 4 frames each: Row 0 is Idle standing animation, Row 1 is Walk cycle animation, Row 2 is Attack animation, Row 3 is Hurt and Death reaction animation; visual character consistency with identical costume, colors, and proportions across all rows"
+  negative: "inconsistent character design, different outfit between rows, asymmetrical face, deformed anatomy, distorted limbs"
+

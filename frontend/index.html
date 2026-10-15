@@ -67,6 +67,26 @@
           </div>
         </div>
 
+        <!-- US-23: Multi-Action Character Mode Toggle (AC 23.3) -->
+        <div class="form-group mode-toggle-group">
+          <div class="mode-toggle-card" id="mode-toggle-card">
+            <div class="mode-toggle-header">
+              <label class="toggle-switch" for="multi-action-toggle">
+                <input type="checkbox" id="multi-action-toggle" name="multi_action">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                <span class="toggle-title">Multi-Action Character (4×4)</span>
+              </label>
+              <span class="mode-badge" id="mode-badge" hidden>4 States: Idle, Walk, Attack, Hurt</span>
+            </div>
+            <div class="state-machine-preview" id="state-machine-preview" hidden>
+              <span class="state-chip" title="Row 0">Row 0: Idle</span>
+              <span class="state-chip" title="Row 1">Row 1: Walk</span>
+              <span class="state-chip" title="Row 2">Row 2: Attack</span>
+              <span class="state-chip" title="Row 3">Row 3: Hurt</span>
+            </div>
+          </div>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Animation Grid <span class="required">*</span></label>
@@ -130,6 +150,12 @@
                 <button type="button" class="btn-theme" data-theme="stage" title="Game Stage theme">🎮 Game Stage</button>
               </div>
             </div>
+          </div>
+
+          <!-- US-23: Action Tracks Bar for Multi-Action Playback -->
+          <div id="action-tracks-bar" class="action-tracks-bar" hidden>
+            <span class="control-label-sm">Track:</span>
+            <div class="action-track-buttons" id="action-track-buttons" role="group" aria-label="Animation state machine tracks"></div>
           </div>
 
           <!-- Canvas Viewport with crisp pixel scaling (AC 21.1, AC 21.4, AC 21.5) -->

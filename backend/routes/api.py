@@ -68,6 +68,7 @@ def generate():
     prompt: str = data["prompt"].strip()
     grid: str = data["grid"]
     style: str = data["style"]
+    multi_action: bool = bool(data.get("multi_action", False))
     seed: int = data.get("seed") if data.get("seed") is not None else random.randint(0, 4_294_967_295)
     name_raw: str = data.get("name") or ""
     name = slugify(name_raw) or slugify(prompt[:48]) or "sprite"
@@ -75,7 +76,7 @@ def generate():
 
     def task(job_id: str) -> None:
         short_id = job_id[:6]
-        _run_job(job_id, short_id, prompt, name, style, seed, rows, columns)
+        _run_job(job_id, short_id, prompt, name, style, seed, rows, columns, multi_action=multi_action)
 
     job_id = _job_store.enqueue(task)
     if job_id is None:
@@ -93,12 +94,13 @@ def _run_job(
     seed: int,
     rows: int,
     columns: int,
+    multi_action: bool = False,
 ) -> None:
     extra = {"job_id": job_id}
     try:
         # ── Step 1: Generate image ────────────────────────────
         _job_store.update_stage(job_id, "generating")
-        positive, negative = build_prompt(prompt, style, rows, columns)
+        positive, negative = build_prompt(prompt, style, rows, columns, multi_action=multi_action)
 
         # Pick provider width/height based on grid
         provider_obj = get_provider(cfg.PROVIDER)
@@ -149,6 +151,17 @@ def _run_job(
         _job_store.update_stage(job_id, "exporting")
         image_file = f"{name}_{short_id}.png"
         generated_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Multi-Action Character state machine tracks (AC 23.2)
+        animations = None
+        if multi_action and rows == 4 and columns == 4:
+            animations = {
+                "idle": {"row": 0, "frames": columns, "fps": 8, "loop": True},
+                "walk": {"row": 1, "frames": columns, "fps": 8, "loop": True},
+                "attack": {"row": 2, "frames": columns, "fps": 10, "loop": False},
+                "hurt": {"row": 3, "frames": columns, "fps": 8, "loop": False},
+            }
+
         metadata = build_metadata(
             name=name,
             image_file=image_file,
@@ -163,6 +176,7 @@ def _run_job(
             provider_name=provider_used,
             model=model_used,
             generated_at=generated_at,
+            animations=animations,
         )
         try:
             export_sprite(

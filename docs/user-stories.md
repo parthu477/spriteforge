@@ -632,6 +632,36 @@
 
 ---
 
+### US-23: Multi-Action Character Sheets (4x4 State Machine: Idle, Walk, Attack, Hurt)
+- **Story ID:** `US-23`
+- **Track / Phase:** Full-Stack & Engine / Phase 5 (Enhancements)
+- **Primary Persona:** `PER-1` (Game Developer), `PER-2` (Technical Artist), `PER-4` (C++ Dev)
+- **Traceability:** Issue #19, PR #19
+
+#### User Story
+> **As a** game developer creating a playable character,  
+> **I want to** generate a full 4x4 multi-row character sheet containing distinct animation states (Idle, Walk, Attack, Hurt),  
+> **So that** I have a complete animation state machine ready for game engine integration from a single prompt.
+
+#### Technical Specifications
+- Prompt engineering preset in `prompts/presets.yaml` conditioning 4 distinct action rows with character visual consistency guardrails:
+  - Row 0: Idle standing animation (4 frames, loop)
+  - Row 1: Walk cycle animation (4 frames, loop)
+  - Row 2: Attack animation (4 frames, one-shot)
+  - Row 3: Hurt / Death reaction animation (4 frames, one-shot)
+- JSON Schema `shared/sprite.schema.json` extended with optional `animations` object mapping track names to `{ row, frames, fps, loop }`.
+- Test fixture `shared/fixtures/valid_4x4_multi_action.json` validating schema conformance and C++ engine parsing.
+- Native C++ engine `SpriteMetadata.h` & `SpriteMetadata.cpp` parsing `animations` into `AnimationTrack` map without breaking single-row backward compatibility.
+- Frontend toggle in `index.html` and `app.js` switching to 4×4 multi-action mode and providing interactive track playback buttons in the animation previewer.
+
+#### Acceptance Criteria
+- **AC 23.1:** Extend prompt engineering templates in `services/prompt_builder.py` to condition 4 distinct action rows (Row 0: Idle, Row 1: Walk, Row 2: Attack, Row 3: Hurt/Death) with visual character consistency.
+- **AC 23.2:** Update JSON metadata schema to include named animation tracks (`animations: { idle: { row, frames, fps, loop }, ... }`).
+- **AC 23.3:** Add a "Multi-Action Character (4x4)" mode toggle in the frontend UI.
+- **AC 23.4:** Ensure backward compatibility with existing single-row sprite metadata in both Python and C++ engine.
+
+---
+
 ### US-25: Real-Time Server-Sent Events (SSE) Progress Streaming
 - **Story ID:** `US-25`
 - **Track / Phase:** Backend & Frontend / Phase 5 (Enhancements)
@@ -684,7 +714,9 @@
 | **US-18** | Sprite Gallery, Re-Roll Seed & Asset Deletion | FR-10.1 – FR-10.3 | NFR-U2 | S-04, S-05 | Phase 5 | Could | 5 |
 | **US-19** | Native Engine Fuzzing & Corrupted Asset Hardening | — | NFR-R1, NFR-P4 | S-09 | Phase 5 | Must | 5 |
 | **US-20** | End-to-End Automated Pipeline Integration Test | — | NFR-P2, NFR-R5 | — | Phase 4 & 5 | Must | 5 |
+| **US-23** | Multi-Action Character Sheets (4x4 State Machine) | FR-02.1, FR-04.1 | NFR-M5, NFR-U2 | S-12 | Phase 5 | Should | 5 |
 | **US-25** | Real-Time Server-Sent Events (SSE) Progress Streaming | FR-07.1, FR-07.3 | NFR-U2, NFR-P2 | S-03, S-07 | Phase 5 | Should | 5 |
 
-**Total Estimated Story Points:** 95 Points (Across 13–16 Working Days)
+**Total Estimated Story Points:** 100 Points (Across 14–17 Working Days)
+
 

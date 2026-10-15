@@ -723,5 +723,140 @@ body {
 .gallery-btn:hover { color: var(--text); }
 .gallery-btn.delete:hover { color: #ef4444; }
 
+/* ── US-23: Mode Toggle Card & State Machine Preview ──────── */
+.mode-toggle-group { margin-bottom: 20px; }
+.mode-toggle-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  transition: all var(--transition);
+}
+.mode-toggle-card.active {
+  border-color: var(--accent);
+  background: rgba(130, 100, 255, 0.08);
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.mode-toggle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.toggle-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.toggle-track {
+  width: 44px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  position: relative;
+  transition: background var(--transition);
+  flex-shrink: 0;
+}
+.toggle-thumb {
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform var(--transition);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.toggle-switch input:checked + .toggle-track {
+  background: var(--accent);
+}
+.toggle-switch input:checked + .toggle-track .toggle-thumb {
+  transform: translateX(20px);
+}
+.toggle-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.mode-badge {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(130, 100, 255, 0.2);
+  border: 1px solid var(--accent);
+  color: #c4b5fd;
+}
+.state-machine-preview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.state-chip {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.75rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.state-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ── US-23: Action Tracks Bar in Animation Previewer ──────── */
+.action-tracks-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.action-track-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-action-track {
+  padding: 5px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-transform: capitalize;
+}
+.btn-action-track:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.btn-action-track.active {
+  background: rgba(130, 100, 255, 0.25);
+  border-color: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
 /* ── Footer ───────────────────────────────────────────────── */
 .footer { text-align: center; padding: 32px 24px; color: var(--text-muted); font-size: 0.8rem; position: relative; z-index: 1; }

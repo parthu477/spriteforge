@@ -25,6 +25,7 @@ def load_json(filename: str) -> dict:
 @pytest.mark.parametrize("filename", [
     "valid_1x4.json",
     "valid_2x4_partial.json",
+    "valid_4x4_multi_action.json",
 ])
 def test_valid_fixture_passes_schema(filename):
     data = load_json(filename)
