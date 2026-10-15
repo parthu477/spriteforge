@@ -1,8 +1,11 @@
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, request, send_from_directory, Response
 import datetime
+import json
 import logging
 import os
+import queue
 import random
+import re
 
 from backend.config import cfg
 from backend.jobs import JobStore
@@ -112,7 +115,7 @@ def _run_job(
             model_used = provider_obj.model
         except (ProviderQuotaExceeded, ProviderUnavailable, ProviderAuthError, ProviderRateLimited, ProviderError) as exc:
             log.warning("Primary provider failed (%s), trying fallback.", exc, extra=extra)
-            if not cfg.FALLBACK_PROVIDER or cfg.FALLBACK_PROVIDER == cfg.PROVIDER:
+            if not cfg.FALLBACK_PROVIDER or cfg.FALLBACK_PROVIDER in (cfg.PROVIDER, "none", ""):
                 raise
             fallback = get_provider(cfg.FALLBACK_PROVIDER)
             image = fallback.generate(positive, negative,
@@ -145,7 +148,7 @@ def _run_job(
         # ── Step 4: Export ────────────────────────────────────
         _job_store.update_stage(job_id, "exporting")
         image_file = f"{name}_{short_id}.png"
-        generated_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        generated_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         metadata = build_metadata(
             name=name,
             image_file=image_file,
@@ -196,7 +199,6 @@ def _run_job(
 
 @api_bp.route("/jobs/<job_id>", methods=["GET"])
 def get_job(job_id: str):
-    import re
     if not re.fullmatch(r"[0-9a-f]{32}", job_id):
         return jsonify({"error": "not_found"}), 404
 
@@ -204,19 +206,48 @@ def get_job(job_id: str):
     if not job:
         return jsonify({"error": "not_found"}), 404
 
-    resp: dict = {
-        "job_id": job.job_id,
-        "status": job.status,
-        "stage": job.stage,
-        "created_at": datetime.datetime.utcfromtimestamp(job.created_at).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    if job.status == "done":
-        resp["duration_ms"] = job.duration_ms
-        resp["metadata"] = job.metadata
-        resp["preview_url"] = job.preview_url
-    elif job.status == "failed":
-        resp["error"] = job.error
-    return jsonify(resp), 200
+    return jsonify(job.to_dict()), 200
+
+
+# ── GET /api/jobs/<job_id>/stream (SSE Progress Streaming, US-25) ──
+
+@api_bp.route("/jobs/<job_id>/stream", methods=["GET"])
+def stream_job(job_id: str):
+    """Server-Sent Events endpoint streaming real-time job progress (AC 25.1)."""
+    if not re.fullmatch(r"[0-9a-f]{32}", job_id):
+        return jsonify({"error": "not_found"}), 404
+
+    q = _job_store.subscribe(job_id)
+    if q is None:
+        return jsonify({"error": "not_found"}), 404
+
+    def event_stream():
+        try:
+            while True:
+                try:
+                    # Timeout periodically to send keepalive comments
+                    data = q.get(timeout=10.0)
+                    yield f"data: {json.dumps(data)}\n\n"
+                    if data.get("status") in ("done", "failed"):
+                        break
+                except queue.Empty:
+                    # Keep-alive comment
+                    yield ": keep-alive\n\n"
+        except GeneratorExit:
+            # Client closed connection
+            pass
+        finally:
+            _job_store.unsubscribe(job_id, q)
+
+    return Response(
+        event_stream(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # ── GET /api/sprites ──────────────────────────────────────────

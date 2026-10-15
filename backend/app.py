@@ -89,4 +89,5 @@ if __name__ == "__main__":
         host=cfg.FLASK_HOST,
         port=cfg.FLASK_PORT,
         debug=False,  # Never True in production (AC 16.3)
+        threaded=True,
     )
