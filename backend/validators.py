@@ -61,6 +61,14 @@ def validate_generate(data: dict[str, Any]) -> dict[str, str]:
         elif not (0 <= seed <= MAX_SEED):
             errors["seed"] = f"Seed must be 0–{MAX_SEED}."
 
+    # multi_action (optional, US-23)
+    multi_action = data.get("multi_action")
+    if multi_action is not None:
+        if not isinstance(multi_action, bool):
+            errors["multi_action"] = "multi_action must be a boolean."
+        elif multi_action and grid != "4x4":
+            errors["grid"] = "Multi-action mode requires a 4x4 grid."
+
     return errors
 
 

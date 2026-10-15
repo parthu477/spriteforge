@@ -221,8 +221,9 @@ def build_metadata(
     model: str,
     generated_at: str,
     seed_applied: bool = True,
+    animations: dict[str, dict[str, Any]] | None = None,
 ) -> dict:
-    return {
+    meta: dict[str, Any] = {
         "schema_version": 1,
         "name": name,
         "image_file": image_file,
@@ -243,3 +244,6 @@ def build_metadata(
             "seed_applied": seed_applied,
         },
     }
+    if animations:
+        meta["animations"] = animations
+    return meta

@@ -126,5 +126,25 @@ std::optional<SpriteMetadata> SpriteMetadata::parse(
                   " > 1 in '" + jsonPath + "' — trying to load anyway.");
     }
 
+    // Optional animation tracks (US-23)
+    if (j.contains("animations") && j["animations"].is_object()) {
+        for (auto it = j["animations"].begin(); it != j["animations"].end(); ++it) {
+            const auto& val = it.value();
+            if (val.is_object() &&
+                val.contains("row") && val["row"].is_number_integer() &&
+                val.contains("frames") && val["frames"].is_number_integer()) {
+                AnimationTrack track;
+                track.row    = val["row"].get<int>();
+                track.frames = val["frames"].get<int>();
+                track.fps    = val.value("fps", m.fps);
+                track.loop   = val.value("loop", m.loop);
+                if (track.row >= 0 && track.row < m.rows &&
+                    track.frames >= 1 && track.frames <= m.columns) {
+                    m.animations[it.key()] = track;
+                }
+            }
+        }
+    }
+
     return m;
 }

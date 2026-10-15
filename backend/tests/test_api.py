@@ -95,6 +95,19 @@ class TestUIEndpoint:
         assert 'data-format="gif"' in content
         assert 'data-format="aseprite"' in content
 
+    def test_multi_action_ui_elements(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        content = resp.data.decode("utf-8")
+        # AC 23.3: Multi-Action toggle and state machine chips
+        assert 'id="multi-action-toggle"' in content
+        assert "Multi-Action Character" in content
+        assert 'id="action-tracks-bar"' in content
+        assert "Row 0: Idle" in content
+        assert "Row 1: Walk" in content
+        assert "Row 2: Attack" in content
+        assert "Row 3: Hurt" in content
+
 
 
 class TestGenerateEndpoint:
@@ -144,6 +157,105 @@ class TestGenerateEndpoint:
         assert data["error"] == "validation_error"
         assert "prompt" in data["fields"]
         assert "grid" in data["fields"]
+
+    def test_multi_action_request_accepted(self, client):
+        with client.session_transaction() as sess:
+            sess["csrf_token"] = "valid_token"
+
+        resp = client.post(
+            "/api/generate",
+            json={
+                "prompt": "retro wizard",
+                "grid": "4x4",
+                "style": "pixel_art",
+                "multi_action": True,
+            },
+            headers={"X-CSRF-Token": "valid_token", "Origin": "http://127.0.0.1:5000"},
+        )
+        assert resp.status_code == 202
+        data = resp.get_json()
+        assert "job_id" in data
+        assert data["status"] == "queued"
+
+    def test_multi_action_with_non_4x4_rejected(self, client):
+        with client.session_transaction() as sess:
+            sess["csrf_token"] = "valid_token"
+
+        resp = client.post(
+            "/api/generate",
+            json={
+                "prompt": "retro wizard",
+                "grid": "1x4",
+                "style": "pixel_art",
+                "multi_action": True,
+            },
+            headers={"X-CSRF-Token": "valid_token", "Origin": "http://127.0.0.1:5000"},
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "validation_error"
+        assert "grid" in data["fields"]
+
+    def test_multi_action_job_produces_animations_metadata(self, monkeypatch):
+        from backend.routes.api import _run_job, _job_store, cfg
+
+        monkeypatch.setattr(cfg, "PROVIDER", "mock")
+        monkeypatch.setattr(cfg, "FALLBACK_PROVIDER", "none")
+
+        job_id = _job_store.enqueue(lambda jid: None)
+        assert job_id is not None
+
+        _run_job(
+            job_id=job_id,
+            short_id=job_id[:6],
+            prompt="cyberpunk cyborg",
+            name="cyborg",
+            style="pixel_art",
+            seed=42,
+            rows=4,
+            columns=4,
+            multi_action=True,
+        )
+
+        job = _job_store.get(job_id)
+        assert job.status == "done"
+        assert job.metadata is not None
+        assert "animations" in job.metadata
+        anims = job.metadata["animations"]
+        # AC 23.2 named animation tracks
+        assert anims["idle"] == {"row": 0, "frames": 4, "fps": 8, "loop": True}
+        assert anims["walk"] == {"row": 1, "frames": 4, "fps": 8, "loop": True}
+        assert anims["attack"] == {"row": 2, "frames": 4, "fps": 10, "loop": False}
+        assert anims["hurt"] == {"row": 3, "frames": 4, "fps": 8, "loop": False}
+
+    def test_single_row_job_does_not_contain_animations_metadata(self, monkeypatch):
+        from backend.routes.api import _run_job, _job_store, cfg
+
+        monkeypatch.setattr(cfg, "PROVIDER", "mock")
+        monkeypatch.setattr(cfg, "FALLBACK_PROVIDER", "none")
+
+        job_id = _job_store.enqueue(lambda jid: None)
+        assert job_id is not None
+
+        _run_job(
+            job_id=job_id,
+            short_id=job_id[:6],
+            prompt="cyberpunk cyborg",
+            name="cyborg",
+            style="pixel_art",
+            seed=42,
+            rows=1,
+            columns=4,
+            multi_action=False,
+        )
+
+        job = _job_store.get(job_id)
+        assert job.status == "done"
+        assert job.metadata is not None
+        # AC 23.4 backward compatibility
+        assert "animations" not in job.metadata
+
+
 
 
 class TestJobStatus:

@@ -49,6 +49,24 @@ TEST_CASE("US-02 AC 2.3: SpriteMetadata Fixture Parsing Suite") {
         CHECK(meta->frameCount == 6);
     }
 
+    SUBCASE("valid_4x4_multi_action.json parses animation tracks correctly (US-23)") {
+        fs::path p = fixturesDir / "valid_4x4_multi_action.json";
+        auto meta = SpriteMetadata::parse(p.string(), assetDir);
+        REQUIRE(meta.has_value());
+        CHECK(meta->rows == 4);
+        CHECK(meta->columns == 4);
+        CHECK(meta->frameCount == 16);
+        CHECK(meta->animations.size() == 4);
+        CHECK(meta->animations.count("idle") == 1);
+        CHECK(meta->animations.at("idle").row == 0);
+        CHECK(meta->animations.count("walk") == 1);
+        CHECK(meta->animations.at("walk").row == 1);
+        CHECK(meta->animations.count("attack") == 1);
+        CHECK(meta->animations.at("attack").row == 2);
+        CHECK(meta->animations.count("hurt") == 1);
+        CHECK(meta->animations.at("hurt").row == 3);
+    }
+
     SUBCASE("invalid_missing_key.json fails gracefully") {
         fs::path p = fixturesDir / "invalid_missing_key.json";
         auto meta = SpriteMetadata::parse(p.string(), assetDir);

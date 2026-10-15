@@ -43,18 +43,44 @@ const seedInput = document.getElementById('seed-input');
 const progressPercent = document.getElementById('progress-percent');
 const progressEta = document.getElementById('progress-eta');
 const progressBarFill = document.getElementById('progress-bar-fill');
+const multiActionToggle = document.getElementById('multi-action-toggle');
+const modeToggleCard = document.getElementById('mode-toggle-card');
+const modeBadge = document.getElementById('mode-badge');
+const stateMachinePreview = document.getElementById('state-machine-preview');
 
 // ── Char counter ──────────────────────────────────────────────
 promptInput.addEventListener('input', () => {
   promptCount.textContent = promptInput.value.length;
 });
 
-// ── Grid pill active state ────────────────────────────────────
+// ── Grid pill & Multi-action toggle (AC 23.3) ──────────────────
 document.querySelectorAll('.grid-pill input').forEach(radio => {
   radio.addEventListener('change', () => {
     document.querySelectorAll('.grid-pill').forEach(p => p.classList.remove('active'));
     radio.closest('.grid-pill').classList.add('active');
+    if (radio.value !== '4x4' && multiActionToggle?.checked) {
+      multiActionToggle.checked = false;
+      modeToggleCard?.classList.remove('active');
+      if (modeBadge) modeBadge.hidden = true;
+      if (stateMachinePreview) stateMachinePreview.hidden = true;
+    }
   });
+});
+
+multiActionToggle?.addEventListener('change', () => {
+  const isMulti = multiActionToggle.checked;
+  modeToggleCard?.classList.toggle('active', isMulti);
+  if (modeBadge) modeBadge.hidden = !isMulti;
+  if (stateMachinePreview) stateMachinePreview.hidden = !isMulti;
+
+  if (isMulti) {
+    const radio4x4 = form.querySelector('input[name="grid"][value="4x4"]');
+    if (radio4x4) {
+      radio4x4.checked = true;
+      document.querySelectorAll('.grid-pill').forEach(p => p.classList.remove('active'));
+      radio4x4.closest('.grid-pill')?.classList.add('active');
+    }
+  }
 });
 
 // ── Random seed ───────────────────────────────────────────────
@@ -88,12 +114,20 @@ function buildPayload() {
     showError('Prompt must be 3–300 characters.');
     return null;
   }
-  const grid = form.querySelector('input[name="grid"]:checked')?.value;
+  const multiAction = multiActionToggle?.checked || false;
+  const grid = multiAction ? '4x4' : form.querySelector('input[name="grid"]:checked')?.value;
   const style = document.getElementById('style-select').value;
   const name = document.getElementById('name-input').value.trim() || undefined;
   const seedVal = seedInput.value.trim();
   const seed = seedVal !== '' ? parseInt(seedVal, 10) : undefined;
-  return { prompt, grid, style, ...(name && { name }), ...(seed !== undefined && { seed }) };
+  return {
+    prompt,
+    grid,
+    style,
+    ...(multiAction && { multi_action: true }),
+    ...(name && { name }),
+    ...(seed !== undefined && { seed }),
+  };
 }
 
 async function submitJob(body) {
@@ -283,6 +317,8 @@ class SpriteAnimationPlayer {
     this.fpsBadge = document.getElementById('fps-badge');
     this.zoomButtons = document.querySelectorAll('.btn-zoom');
     this.themeButtons = document.querySelectorAll('.btn-theme');
+    this.actionTracksBar = document.getElementById('action-tracks-bar');
+    this.actionTrackButtons = document.getElementById('action-track-buttons');
 
     this.image = null;
     this.frameWidth = 128;
@@ -297,6 +333,9 @@ class SpriteAnimationPlayer {
     this.animReqId = null;
     this.lastTimestamp = 0;
     this.currentTheme = 'checkered';
+    this.animations = null;
+    this.activeTrackName = null;
+    this.activeTrack = null;
 
     this.initListeners();
   }
@@ -377,32 +416,71 @@ class SpriteAnimationPlayer {
       this.rows = rows;
       this.columns = columns;
       this.frameCount = Math.max(1, totalFrames);
+      this.animations = metadata?.animations || null;
+      this.activeTrackName = null;
+      this.activeTrack = null;
 
       // Set canvas internal resolution to 1 frame size
       this.canvas.width = fw;
       this.canvas.height = fh;
-
-      // Update scrubber bounds
-      if (this.scrubber) {
-        this.scrubber.min = 0;
-        this.scrubber.max = this.frameCount - 1;
-        this.scrubber.value = 0;
-      }
-      this.currentFrame = 0;
-
-      // Initialize zoom display
       this.applyZoom(this.zoom);
 
-      // Initialize FPS
-      this.setFps(initialFps);
-
-      // Render first frame
-      this.renderFrame(0);
-
-      // Start looping animation (AC 21.1)
-      this.play();
+      // Handle named animation tracks (US-23 AC 23.2, 23.4)
+      if (this.animations && Object.keys(this.animations).length > 0) {
+        this.renderActionTrackButtons();
+        if (this.actionTracksBar) this.actionTracksBar.hidden = false;
+        const initialTrack = this.animations.idle ? 'idle' : Object.keys(this.animations)[0];
+        this.selectTrack(initialTrack);
+      } else {
+        if (this.actionTracksBar) this.actionTracksBar.hidden = true;
+        this.activeTrack = null;
+        if (this.scrubber) {
+          this.scrubber.min = 0;
+          this.scrubber.max = this.frameCount - 1;
+          this.scrubber.value = 0;
+        }
+        this.currentFrame = 0;
+        this.setFps(initialFps);
+        this.renderFrame(0);
+        this.play();
+      }
     };
     img.src = imageUrl;
+  }
+
+  renderActionTrackButtons() {
+    if (!this.actionTrackButtons || !this.animations) return;
+    this.actionTrackButtons.innerHTML = Object.keys(this.animations).map(key => {
+      const track = this.animations[key];
+      return `<button type="button" class="btn-action-track" data-track="${key}" title="Row ${track.row} (${track.frames} frames, ${track.fps} FPS)">▶ ${key}</button>`;
+    }).join('');
+
+    this.actionTrackButtons.querySelectorAll('.btn-action-track').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.selectTrack(btn.dataset.track);
+      });
+    });
+  }
+
+  selectTrack(trackName) {
+    if (!this.animations || !this.animations[trackName]) return;
+    this.activeTrackName = trackName;
+    this.activeTrack = this.animations[trackName];
+
+    this.actionTrackButtons?.querySelectorAll('.btn-action-track').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.track === trackName);
+    });
+
+    this.frameCount = this.activeTrack.frames;
+    if (this.scrubber) {
+      this.scrubber.min = 0;
+      this.scrubber.max = this.frameCount - 1;
+      this.scrubber.value = 0;
+    }
+    this.currentFrame = 0;
+    this.setFps(this.activeTrack.fps || 8);
+    this.renderFrame(0);
+    this.play();
   }
 
   renderFrame(frameIdx) {
@@ -410,10 +488,18 @@ class SpriteAnimationPlayer {
     const idx = Math.max(0, Math.min(frameIdx, this.frameCount - 1));
     this.currentFrame = idx;
 
-    const col = idx % this.columns;
-    const row = Math.floor(idx / this.columns);
-    const sx = col * this.frameWidth;
-    const sy = row * this.frameHeight;
+    let sx, sy;
+    if (this.activeTrack) {
+      const col = idx % this.columns;
+      const row = this.activeTrack.row;
+      sx = col * this.frameWidth;
+      sy = row * this.frameHeight;
+    } else {
+      const col = idx % this.columns;
+      const row = Math.floor(idx / this.columns);
+      sx = col * this.frameWidth;
+      sy = row * this.frameHeight;
+    }
 
     // Ensure nearest-neighbor pixelated rendering on canvas
     this.ctx.imageSmoothingEnabled = false;
@@ -434,7 +520,8 @@ class SpriteAnimationPlayer {
       this.scrubber.value = idx;
     }
     if (this.frameCounter) {
-      this.frameCounter.textContent = `Frame: ${idx + 1} / ${this.frameCount}`;
+      const trackSuffix = this.activeTrackName ? ` (${this.activeTrackName})` : '';
+      this.frameCounter.textContent = `Frame: ${idx + 1} / ${this.frameCount}${trackSuffix}`;
     }
     if (this.frameTimestamp) {
       const sec = this.fps > 0 ? (idx / this.fps).toFixed(2) : '0.00';
@@ -457,7 +544,16 @@ class SpriteAnimationPlayer {
       const elapsed = timestamp - this.lastTimestamp;
 
       if (elapsed >= frameDuration) {
-        const next = (this.currentFrame + 1) % this.frameCount;
+        let next;
+        if (this.activeTrack && this.activeTrack.loop === false) {
+          if (this.currentFrame >= this.frameCount - 1) {
+            this.pause();
+            return;
+          }
+          next = this.currentFrame + 1;
+        } else {
+          next = (this.currentFrame + 1) % this.frameCount;
+        }
         this.renderFrame(next);
         this.lastTimestamp = timestamp - (elapsed % frameDuration);
       }
@@ -555,6 +651,10 @@ function onJobDone(data) {
     grid: `${data.metadata?.rows}×${data.metadata?.columns}`,
     size: `${data.metadata?.frame_width}×${data.metadata?.frame_height}px`,
     fps: data.metadata?.fps || 8,
+    ...(data.metadata?.animations && {
+      tracks: Object.keys(data.metadata.animations).join(', '),
+      animations: data.metadata.animations,
+    }),
     provider: data.metadata?.source?.provider,
     duration: `${(data.duration_ms / 1000).toFixed(1)}s`,
   }, null, 2);

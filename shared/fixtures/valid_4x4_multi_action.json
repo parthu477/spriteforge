@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "name": "warrior_actions",
+  "image_file": "warrior_actions_123abc.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "rows": 4,
+  "columns": 4,
+  "frame_count": 16,
+  "fps": 8,
+  "loop": true,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    },
+    "walk": {
+      "row": 1,
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    },
+    "attack": {
+      "row": 2,
+      "frames": 4,
+      "fps": 10,
+      "loop": false
+    },
+    "hurt": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": false
+    }
+  },
+  "source": {
+    "prompt": "pixel art warrior knight state machine",
+    "style": "pixel_art",
+    "seed": 1337,
+    "provider": "mock",
+    "model": "spriteforge-mock-v1",
+    "generated_at": "2026-10-15T12:00:00Z"
+  }
+}
