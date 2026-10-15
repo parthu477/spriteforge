@@ -195,7 +195,56 @@
 
         <div class="result-meta" id="result-meta"></div>
         <div class="result-actions">
-          <a id="download-btn" href="#" download class="btn-secondary">⬇ Download</a>
+          <!-- AC 24.5: 1-Click Game Engine & Format Export Dropdown -->
+          <div class="export-dropdown" id="export-dropdown">
+            <button type="button" class="btn-export-trigger" id="export-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="Export sprite in game engine & animation formats">
+              <span class="export-btn-icon">⬇</span>
+              <span class="export-btn-text">Export</span>
+              <span class="dropdown-chevron">▾</span>
+            </button>
+            <div class="export-menu" id="export-menu" role="menu" hidden>
+              <button type="button" class="export-option" data-format="png" role="menuitem">
+                <span class="export-opt-icon">🖼</span>
+                <div class="export-opt-text">
+                  <span class="export-opt-title">Download PNG</span>
+                  <span class="export-opt-sub">Sprite Sheet</span>
+                </div>
+                <span class="export-opt-badge">.png</span>
+              </button>
+              <button type="button" class="export-option" data-format="godot" role="menuitem">
+                <span class="export-opt-icon">🤖</span>
+                <div class="export-opt-text">
+                  <span class="export-opt-title">Godot (.tres)</span>
+                  <span class="export-opt-sub">SpriteFrames</span>
+                </div>
+                <span class="export-opt-badge">.tres</span>
+              </button>
+              <button type="button" class="export-option" data-format="unity" role="menuitem">
+                <span class="export-opt-icon">🎮</span>
+                <div class="export-opt-text">
+                  <span class="export-opt-title">Unity (.meta)</span>
+                  <span class="export-opt-sub">Point Filter YAML</span>
+                </div>
+                <span class="export-opt-badge">.meta</span>
+              </button>
+              <button type="button" class="export-option" data-format="gif" role="menuitem">
+                <span class="export-opt-icon">🎞</span>
+                <div class="export-opt-text">
+                  <span class="export-opt-title">Animated GIF</span>
+                  <span class="export-opt-sub">Transparent loop</span>
+                </div>
+                <span class="export-opt-badge">.gif</span>
+              </button>
+              <button type="button" class="export-option" data-format="aseprite" role="menuitem">
+                <span class="export-opt-icon">📄</span>
+                <div class="export-opt-text">
+                  <span class="export-opt-title">Aseprite (JSON)</span>
+                  <span class="export-opt-sub">Standard Sheet</span>
+                </div>
+                <span class="export-opt-badge">.json</span>
+              </button>
+            </div>
+          </div>
           <button id="reroll-btn" class="btn-secondary">🎲 Re-roll</button>
         </div>
       </div>
