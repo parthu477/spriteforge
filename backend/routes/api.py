@@ -22,7 +22,12 @@ from backend.services.providers.base import (
     ProviderError,
 )
 from backend.services.prompt_builder import build_prompt
-from backend.services.processing import remove_background, normalise_grid, build_metadata
+from backend.services.processing import (
+    remove_background,
+    normalise_grid,
+    build_metadata,
+    apply_retro_postprocessing,
+)
 from backend.services.exporter import (
     export_sprite,
     delete_sprite,
@@ -77,6 +82,8 @@ def generate():
     grid: str = data["grid"]
     style: str = data["style"]
     multi_action: bool = bool(data.get("multi_action", False))
+    palette: str = data.get("palette", "original") or "original"
+    outline: bool = bool(data.get("outline", False))
     seed: int = data.get("seed") if data.get("seed") is not None else random.randint(0, 4_294_967_295)
     name_raw: str = data.get("name") or ""
     name = slugify(name_raw) or slugify(prompt[:48]) or "sprite"
@@ -84,7 +91,19 @@ def generate():
 
     def task(job_id: str) -> None:
         short_id = job_id[:6]
-        _run_job(job_id, short_id, prompt, name, style, seed, rows, columns, multi_action=multi_action)
+        _run_job(
+            job_id,
+            short_id,
+            prompt,
+            name,
+            style,
+            seed,
+            rows,
+            columns,
+            multi_action=multi_action,
+            palette=palette,
+            outline=outline,
+        )
 
     job_id = _job_store.enqueue(task)
     if job_id is None:
@@ -103,6 +122,8 @@ def _run_job(
     rows: int,
     columns: int,
     multi_action: bool = False,
+    palette: str = "original",
+    outline: bool = False,
 ) -> None:
     extra = {"job_id": job_id}
     try:
@@ -142,7 +163,7 @@ def _run_job(
             _job_store.fail(job_id, "removing_background", "bg_removal_failed", str(exc))
             return
 
-        # ── Step 3: Grid processing ───────────────────────────
+        # ── Step 3: Grid processing & Retro Post-Processing ───
         _job_store.update_stage(job_id, "processing")
         try:
             image, fw, fh, frame_count = normalise_grid(
@@ -150,6 +171,14 @@ def _run_job(
                 cell_size=cfg.CELL_SIZE,
                 style=style,
                 max_texture_size=cfg.MAX_TEXTURE_SIZE,
+            )
+            # US-22: Retro Pixel-Art Post-Processing & Palette Quantization (AC 22.1, 22.2, 22.3, 22.5)
+            image = apply_retro_postprocessing(
+                image,
+                palette=palette,
+                outline=outline,
+                rows=rows,
+                columns=columns,
             )
         except ValueError as exc:
             _job_store.fail(job_id, "processing", "processing_failed", str(exc))
@@ -185,6 +214,8 @@ def _run_job(
             model=model_used,
             generated_at=generated_at,
             animations=animations,
+            palette=palette,
+            outline=outline,
         )
         try:
             export_sprite(

@@ -9,6 +9,15 @@ from backend.services.processing import (
     _check_alpha,
     _alpha_density,
     build_metadata,
+    defringe,
+    add_outline,
+    quantize_palette,
+    apply_retro_postprocessing,
+    PALETTES,
+    PICO8_PALETTE,
+    GAMEBOY_PALETTE,
+    NES_PALETTE,
+    ENDESGA32_PALETTE,
 )
 
 
@@ -179,4 +188,120 @@ class TestPromptBuilderMultiAction:
         )
         assert "Row 0 is Idle" not in pos
         assert "Row 3 is Hurt" not in pos
+
+
+class TestRetroPostProcessing:
+    """Tests for US-22: Retro Pixel-Art Post-Processing & Palette Quantization."""
+
+    def test_ac_22_1_palette_quantization_pico8(self):
+        img = Image.new("RGBA", (32, 32), (120, 200, 50, 255))
+        quant = quantize_palette(img, "pico-8")
+        assert quant.size == (32, 32)
+        assert quant.mode == "RGBA"
+        colors = set(PICO8_PALETTE)
+        for x in range(32):
+            for y in range(32):
+                px = quant.getpixel((x, y))
+                assert px[:3] in colors
+
+    def test_ac_22_1_palette_quantization_gameboy(self):
+        img = Image.new("RGBA", (32, 32), (200, 100, 150, 255))
+        quant = quantize_palette(img, "gameboy")
+        colors = set(GAMEBOY_PALETTE)
+        for x in range(32):
+            for y in range(32):
+                px = quant.getpixel((x, y))
+                assert px[:3] in colors
+
+    def test_ac_22_1_palette_quantization_nes(self):
+        img = Image.new("RGBA", (32, 32), (210, 80, 40, 255))
+        quant = quantize_palette(img, "nes")
+        colors = set(NES_PALETTE)
+        for x in range(32):
+            for y in range(32):
+                px = quant.getpixel((x, y))
+                assert px[:3] in colors
+
+    def test_ac_22_1_palette_quantization_endesga32(self):
+        img = Image.new("RGBA", (32, 32), (77, 188, 222, 255))
+        quant = quantize_palette(img, "endesga-32")
+        colors = set(ENDESGA32_PALETTE)
+        for x in range(32):
+            for y in range(32):
+                px = quant.getpixel((x, y))
+                assert px[:3] in colors
+
+    def test_ac_22_1_palette_original_keeps_colors(self):
+        img = Image.new("RGBA", (16, 16), (123, 45, 67, 255))
+        quant = quantize_palette(img, "original")
+        assert quant.getpixel((0, 0)) == (123, 45, 67, 255)
+
+    def test_ac_22_2_edge_defringing_eliminates_halos(self):
+        import numpy as np
+        img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+        arr = np.array(img)
+        # Solid center
+        arr[10:22, 10:22] = [200, 50, 50, 255]
+        # Semi-transparent border fringe (alpha 160, tinted with white background)
+        arr[9, 10:22] = [255, 255, 255, 160]
+        # Blurry weak halo (alpha 60)
+        arr[8, 10:22] = [255, 255, 255, 60]
+        fringe_img = Image.fromarray(arr)
+
+        cleaned = defringe(fringe_img, alpha_threshold=128)
+        clean_arr = np.array(cleaned)
+        # Blurry weak halo removed completely
+        assert clean_arr[8, 15, 3] == 0
+        # Border fringe clamped to solid alpha
+        assert clean_arr[9, 15, 3] == 255
+        # Fringe color bled from solid foreground, not contaminated white
+        assert (clean_arr[9, 15, :3] == [200, 50, 50]).all()
+
+    def test_ac_22_3_1px_dark_outline(self):
+        import numpy as np
+        img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+        arr = np.array(img)
+        # Solid 10x10 square in center
+        arr[10:20, 10:20] = [100, 150, 200, 255]
+        test_in = Image.fromarray(arr)
+
+        outlined = add_outline(test_in, rows=1, columns=1, color=(16, 16, 16))
+        out_arr = np.array(outlined)
+
+        # Center should remain original color
+        assert (out_arr[15, 15] == [100, 150, 200, 255]).all()
+        # Immediately adjacent outer pixels (e.g. y=9, x=15) must be 1px outline
+        assert (out_arr[9, 15] == [16, 16, 16, 255]).all()
+        assert (out_arr[20, 15] == [16, 16, 16, 255]).all()
+        assert (out_arr[15, 9] == [16, 16, 16, 255]).all()
+        assert (out_arr[15, 20] == [16, 16, 16, 255]).all()
+        # 2 pixels away should remain transparent
+        assert out_arr[7, 15, 3] == 0
+
+    def test_ac_22_5_postprocessing_duration_under_100ms(self):
+        import time
+        import numpy as np
+
+        # Create a full 512x128 sprite sheet with 4 frames
+        sheet = Image.new("RGBA", (512, 128), (0, 0, 0, 0))
+        arr = np.array(sheet)
+        for c in range(4):
+            arr[20:108, c * 128 + 20:c * 128 + 108, :3] = np.random.randint(0, 255, (88, 88, 3))
+            arr[20:108, c * 128 + 20:c * 128 + 108, 3] = np.random.randint(100, 255, (88, 88))
+        test_sheet = Image.fromarray(arr)
+
+        # Warmup
+        _ = apply_retro_postprocessing(test_sheet, palette="pico-8", outline=True, rows=1, columns=4)
+
+        # Measure 3 runs
+        durations = []
+        for _ in range(3):
+            t0 = time.perf_counter()
+            _ = apply_retro_postprocessing(test_sheet, palette="pico-8", outline=True, rows=1, columns=4)
+            durations.append((time.perf_counter() - t0) * 1000)
+
+        avg_ms = sum(durations) / len(durations)
+        # AC 22.5: Must be strictly under 100ms
+        assert avg_ms < 100.0, f"Post-processing took {avg_ms:.2f}ms, which exceeds 100ms limit"
+
 

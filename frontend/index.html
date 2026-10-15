@@ -67,6 +67,29 @@
           </div>
         </div>
 
+        <!-- US-22: Retro Pixel-Art Post-Processing & Palette Quantization (AC 22.4, AC 22.3) -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="palette-select" class="form-label">Color Palette <span class="optional">(Retro Quantization)</span></label>
+            <select id="palette-select" name="palette" class="form-select">
+              <option value="original" selected>Original (Full Color)</option>
+              <option value="pico-8">PICO-8 (16 colors)</option>
+              <option value="gameboy">Game Boy (4 shades)</option>
+              <option value="nes">NES (54 colors)</option>
+              <option value="endesga-32">Endesga-32 (32 colors)</option>
+            </select>
+          </div>
+
+          <div class="form-group outline-group">
+            <label class="form-label">Retro Outline <span class="optional">(1px Silhouette)</span></label>
+            <label class="checkbox-container" for="outline-toggle">
+              <input type="checkbox" id="outline-toggle" name="outline">
+              <span class="custom-checkbox" aria-hidden="true"></span>
+              <span class="checkbox-label">1px Dark Outline</span>
+            </label>
+          </div>
+        </div>
+
         <!-- US-23: Multi-Action Character Mode Toggle (AC 23.3) -->
         <div class="form-group mode-toggle-group">
           <div class="mode-toggle-card" id="mode-toggle-card">

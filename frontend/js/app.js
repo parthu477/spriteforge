@@ -43,6 +43,8 @@ const seedInput = document.getElementById('seed-input');
 const progressPercent = document.getElementById('progress-percent');
 const progressEta = document.getElementById('progress-eta');
 const progressBarFill = document.getElementById('progress-bar-fill');
+const paletteSelect = document.getElementById('palette-select');
+const outlineToggle = document.getElementById('outline-toggle');
 const multiActionToggle = document.getElementById('multi-action-toggle');
 const modeToggleCard = document.getElementById('mode-toggle-card');
 const modeBadge = document.getElementById('mode-badge');
@@ -117,6 +119,8 @@ function buildPayload() {
   const multiAction = multiActionToggle?.checked || false;
   const grid = multiAction ? '4x4' : form.querySelector('input[name="grid"]:checked')?.value;
   const style = document.getElementById('style-select').value;
+  const palette = paletteSelect?.value || 'original';
+  const outline = outlineToggle?.checked || false;
   const name = document.getElementById('name-input').value.trim() || undefined;
   const seedVal = seedInput.value.trim();
   const seed = seedVal !== '' ? parseInt(seedVal, 10) : undefined;
@@ -125,6 +129,8 @@ function buildPayload() {
     grid,
     style,
     ...(multiAction && { multi_action: true }),
+    ...(palette && palette !== 'original' && { palette }),
+    ...(outline && { outline: true }),
     ...(name && { name }),
     ...(seed !== undefined && { seed }),
   };
@@ -651,6 +657,8 @@ function onJobDone(data) {
     grid: `${data.metadata?.rows}×${data.metadata?.columns}`,
     size: `${data.metadata?.frame_width}×${data.metadata?.frame_height}px`,
     fps: data.metadata?.fps || 8,
+    palette: data.metadata?.source?.palette || 'original',
+    outline: Boolean(data.metadata?.source?.outline),
     ...(data.metadata?.animations && {
       tracks: Object.keys(data.metadata.animations).join(', '),
       animations: data.metadata.animations,
@@ -789,6 +797,12 @@ async function loadGallery() {
               document.querySelectorAll('.grid-pill').forEach(p => p.classList.remove('active'));
               radio.closest('.grid-pill').classList.add('active');
             }
+            if (paletteSelect && sprite.metadata.source?.palette) {
+              paletteSelect.value = sprite.metadata.source.palette;
+            }
+            if (outlineToggle) {
+              outlineToggle.checked = Boolean(sprite.metadata.source?.outline);
+            }
           }
           const seed = Math.floor(Math.random() * 4294967295);
           submitJob({ ...lastPromptData, seed });
@@ -828,6 +842,12 @@ async function loadGallery() {
           radio.checked = true;
           document.querySelectorAll('.grid-pill').forEach(p => p.classList.remove('active'));
           radio.closest('.grid-pill').classList.add('active');
+        }
+        if (paletteSelect && meta.source?.palette) {
+          paletteSelect.value = meta.source.palette;
+        }
+        if (outlineToggle) {
+          outlineToggle.checked = Boolean(meta.source?.outline);
         }
         seedInput.value = Math.floor(Math.random() * 4294967295);
         form.dispatchEvent(new Event('submit'));
