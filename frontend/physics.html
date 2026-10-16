@@ -65,10 +65,9 @@
       <button id="pg-mute-btn" class="ctrl-btn mute-btn">🔊 Mute</button>
 
       <div class="ctrl-hints">
-        <span class="hint-chip">← → / A D Drive</span>
-        <span class="hint-chip">↑ / W / Space Jump</span>
-        <span class="hint-chip">↓ / S Brake</span>
-        <span class="hint-chip">Q / E Mid-air Rotate</span>
+        <span class="hint-chip">W / D / ↑ / → Gas / Air-Tilt</span>
+        <span class="hint-chip">S / A / ↓ / ← Brake / Air-Tilt</span>
+        <span class="hint-chip">R Restart</span>
         <span class="hint-chip">Shift+F Debug</span>
       </div>
     </div>
@@ -76,26 +75,39 @@
     <!-- Physics sandbox stage (single canvas) -->
     <div class="sandbox-stage pg-stage" id="pg-stage">
 
-      <!-- HUD -->
+      <!-- HUD (Issue #33) -->
       <div class="sandbox-hud" id="pg-hud">
-        <div class="hud-cell">
-          <span class="hud-icon">🚗</span>
-          <span class="hud-val" id="pg-hud-speed">0 km/h</span>
+        <div class="hud-cell dist-cell">
+          <span class="hud-icon">📏</span>
+          <span class="hud-val" id="pg-hud-dist">0 m</span>
         </div>
-        <div class="hud-cell fuel-cell">
-          <span class="hud-icon">⛽</span>
+        <div class="hud-cell speed-cell">
+          <span class="hud-icon">⚡</span>
+          <div class="hud-speed-wrap">
+            <span class="hud-val" id="pg-hud-speed">0 km/h</span>
+            <div class="hud-rpm-track"><div class="hud-rpm-bar" id="pg-hud-rpm" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="hud-cell fuel-cell" id="pg-fuel-cell">
+          <span class="hud-icon fuel-icon">⛽</span>
           <div class="hud-fuel-wrap">
-            <span class="hud-val" id="pg-hud-fuel">100%</span>
+            <div class="hud-fuel-meta">
+              <span class="hud-val" id="pg-hud-fuel">100%</span>
+              <span class="hud-fuel-warning" id="pg-fuel-warning" hidden>LOW!</span>
+            </div>
             <div class="hud-fuel-track">
               <div class="hud-fuel-bar" id="pg-hud-fuel-bar" style="width:100%"></div>
             </div>
           </div>
         </div>
-        <div class="hud-cell">
+        <div class="hud-cell coins-cell">
           <span class="hud-icon">🪙</span>
-          <span class="hud-val" id="pg-hud-coins">0</span>
+          <div class="hud-coins-wrap">
+            <span class="hud-val" id="pg-hud-coins">0</span>
+            <span class="hud-score-sub" id="pg-hud-score">0 pts</span>
+          </div>
         </div>
-        <div class="hud-cell pg-air-cell">
+        <div class="hud-cell pg-air-cell" id="pg-hud-stunt-cell">
           <span class="hud-val" id="pg-hud-air"></span>
         </div>
       </div>
@@ -115,13 +127,36 @@
       <!-- Single game canvas -->
       <canvas id="pg-canvas" class="pg-canvas" aria-label="Physics sandbox — drive your vehicle over procedural terrain"></canvas>
 
-      <!-- Crash Overlay -->
+      <!-- Game Over Summary Screen (Issue #33) -->
       <div class="crash-overlay" id="pg-crash-overlay" hidden>
-        <div class="crash-panel">
-          <div class="crash-icon">💥</div>
-          <h2 class="crash-title">Flipped!</h2>
-          <p class="crash-sub">Chassis hit the ground — you crashed!</p>
-          <button id="pg-restart-btn" class="btn-restart">🔄 Try Again</button>
+        <div class="crash-panel game-over-panel">
+          <div class="crash-icon" id="pg-go-icon">💥</div>
+          <h2 class="crash-title" id="pg-go-title">Game Over</h2>
+          <p class="crash-sub" id="pg-go-sub">Chassis hit the ground — you crashed!</p>
+          
+          <div class="game-over-stats">
+            <div class="go-stat">
+              <span class="go-stat-label">Distance Reached</span>
+              <span class="go-stat-val" id="pg-go-dist">0 m</span>
+            </div>
+            <div class="go-stat">
+              <span class="go-stat-label">Coins Collected</span>
+              <span class="go-stat-val" id="pg-go-coins">0</span>
+            </div>
+            <div class="go-stat">
+              <span class="go-stat-label">Stunt Bonus</span>
+              <span class="go-stat-val" id="pg-go-stunts">+0 pts</span>
+            </div>
+            <div class="go-stat go-stat-total">
+              <span class="go-stat-label">Total Score</span>
+              <span class="go-stat-val" id="pg-go-total">0 pts</span>
+            </div>
+          </div>
+
+          <div class="go-actions">
+            <button id="pg-restart-btn" class="btn-restart">🔄 Try Again <span class="btn-kbd-hint">[R]</span></button>
+            <a href="/" class="btn-change-car">🎨 Change Car</a>
+          </div>
         </div>
       </div>
 
@@ -130,12 +165,18 @@
 
     </div><!-- /.pg-stage -->
 
-    <!-- Mobile touch controls -->
-    <div class="touch-controls pg-touch-controls" id="pg-touch-controls">
-      <button id="pg-touch-rotl"  class="touch-btn" aria-label="Rotate Left">↺ Tilt</button>
-      <button id="pg-touch-brake" class="touch-btn" aria-label="Brake">⬅ Brake</button>
-      <button id="pg-touch-gas"   class="touch-btn touch-btn-gas" aria-label="Gas">Gas ➡</button>
-      <button id="pg-touch-rotr"  class="touch-btn" aria-label="Rotate Right">Tilt ↻</button>
+    <!-- Mobile / On-Screen Touch Pedals (Issue #33) -->
+    <div class="touch-controls pg-touch-pedals" id="pg-touch-controls">
+      <button id="pg-touch-brake" class="touch-pedal pedal-brake" aria-label="Brake / Reverse / Air-Tilt Left">
+        <span class="pedal-icon">⬅</span>
+        <span class="pedal-title">BRAKE</span>
+        <span class="pedal-sub">Air-Tilt ↺</span>
+      </button>
+      <button id="pg-touch-gas" class="touch-pedal pedal-gas" aria-label="Gas / Accelerate / Air-Tilt Right">
+        <span class="pedal-icon">➡</span>
+        <span class="pedal-title">GAS</span>
+        <span class="pedal-sub">Air-Tilt ↻</span>
+      </button>
     </div>
 
     <!-- Suspension legend -->

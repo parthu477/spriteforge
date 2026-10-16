@@ -370,3 +370,191 @@ body.game-page {
   .hud-biome-cell { display: none; }
   .crash-panel { padding: 1.8rem 1.5rem; }
 }
+
+/* ── Issue #33: Distance cell & Speed + RPM wrap ─────────────── */
+.dist-cell .hud-val {
+  font-feature-settings: 'tnum';
+  min-width: 3.5rem;
+}
+
+.hud-speed-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hud-rpm-track {
+  width: 52px;
+  height: 3px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hud-rpm-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa);
+  transition: width 0.1s linear;
+}
+
+/* ── Issue #33: Fuel warning badge ───────────────────────────── */
+.hud-fuel-warning {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #f87171;
+  background: rgba(239,68,68,0.2);
+  border: 1px solid rgba(239,68,68,0.5);
+  border-radius: 5px;
+  padding: 1px 5px;
+  animation: fuelPulse 0.7s ease-in-out infinite alternate;
+}
+
+.fuel-cell.fuel-warning {
+  border-color: rgba(239,68,68,0.6) !important;
+  box-shadow: 0 0 12px rgba(239,68,68,0.3);
+  animation: fuelWarnBorder 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes fuelPulse {
+  from { opacity: 1; }
+  to   { opacity: 0.4; }
+}
+
+@keyframes fuelWarnBorder {
+  from { box-shadow: 0 0 8px rgba(239,68,68,0.3); }
+  to   { box-shadow: 0 0 18px rgba(239,68,68,0.6); }
+}
+
+/* ── Issue #33: Dual Touch Pedals ────────────────────────────── */
+.pg-touch-pedals {
+  display: none;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+}
+
+@media (pointer: coarse) {
+  .pg-touch-pedals { display: flex; }
+}
+
+.touch-pedal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 1rem 0.5rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(8px);
+  color: #e2e8f0;
+  font-family: 'Space Mono', monospace;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.08s, transform 0.08s, box-shadow 0.08s;
+  touch-action: none;
+}
+
+.pedal-brake {
+  border-color: rgba(239,68,68,0.35);
+  background: linear-gradient(160deg, rgba(239,68,68,0.12), rgba(180,30,30,0.06));
+}
+
+.pedal-gas {
+  border-color: rgba(139,92,246,0.45);
+  background: linear-gradient(160deg, rgba(139,92,246,0.18), rgba(79,70,229,0.08));
+}
+
+.touch-pedal:hover { opacity: 0.9; }
+
+.touch-pedal.pedal-pressed,
+.touch-pedal:active {
+  transform: scale(0.94);
+}
+
+.pedal-brake.pedal-pressed  { background: rgba(239,68,68,0.32); box-shadow: 0 0 18px rgba(239,68,68,0.4); }
+.pedal-gas.pedal-pressed    { background: rgba(139,92,246,0.35); box-shadow: 0 0 18px rgba(139,92,246,0.5); }
+
+.pedal-icon  { font-size: 1.6rem; line-height: 1; }
+.pedal-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; }
+.pedal-sub   { font-size: 0.6rem; color: #94a3b8; letter-spacing: 0.05em; }
+
+/* ── Issue #33: Game Over Summary Stats Panel ────────────────── */
+.game-over-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 1.2rem;
+  margin: 1rem 0 1.5rem;
+  text-align: left;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+
+.go-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.go-label {
+  font-size: 0.68rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.go-value {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.go-total-row {
+  grid-column: 1 / -1;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.go-total-row .go-label { color: #a78bfa; }
+.go-total-row .go-value { color: #c4b5fd; font-size: 1.05rem; }
+
+/* ── Issue #33: Go-actions (Try Again + Change Car) ─────────── */
+.go-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-change-car {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 1.4rem;
+  border-radius: 10px;
+  border: 1px solid rgba(139,92,246,0.4);
+  background: rgba(139,92,246,0.1);
+  color: #c4b5fd;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-change-car:hover {
+  background: rgba(139,92,246,0.2);
+  border-color: rgba(139,92,246,0.6);
+  transform: translateY(-2px);
+}

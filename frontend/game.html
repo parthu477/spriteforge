@@ -62,25 +62,35 @@
 
       <!-- Key hints -->
       <div class="ctrl-hints">
-        <span class="hint-chip">← → Drive</span>
-        <span class="hint-chip">↑ / Space Jump</span>
-        <span class="hint-chip">↓ Brake</span>
+        <span class="hint-chip">W / D / ↑ / → Gas / Air-Tilt</span>
+        <span class="hint-chip">S / A / ↓ / ← Brake / Air-Tilt</span>
+        <span class="hint-chip">R Restart</span>
       </div>
     </div>
 
     <!-- Sandbox Stage -->
     <div class="sandbox-stage" id="sandbox-stage">
 
-      <!-- HUD -->
+      <!-- HUD (Issue #33: Distance, Speed, RPM, Fuel, Coins) -->
       <div class="sandbox-hud" id="sandbox-hud">
-        <div class="hud-cell">
-          <span class="hud-icon">🚗</span>
-          <span class="hud-val" id="hud-speed">0 km/h</span>
+        <div class="hud-cell dist-cell">
+          <span class="hud-icon">📏</span>
+          <span class="hud-val" id="hud-dist">0 m</span>
         </div>
-        <div class="hud-cell fuel-cell">
+        <div class="hud-cell speed-cell">
+          <span class="hud-icon">🚗</span>
+          <div class="hud-speed-wrap">
+            <span class="hud-val" id="hud-speed">0 km/h</span>
+            <div class="hud-rpm-track"><div class="hud-rpm-bar" id="hud-rpm-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="hud-cell fuel-cell" id="hud-fuel-cell">
           <span class="hud-icon">⛽</span>
           <div class="hud-fuel-wrap">
-            <span class="hud-val" id="hud-fuel">100%</span>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="hud-val" id="hud-fuel">100%</span>
+              <span class="hud-fuel-warning" id="hud-fuel-warn" hidden>⚠ LOW!</span>
+            </div>
             <div class="hud-fuel-track">
               <div class="hud-fuel-bar" id="hud-fuel-bar" style="width:100%"></div>
             </div>
@@ -102,22 +112,52 @@
       <!-- Foreground canvas (car, coins, particles overlay) -->
       <canvas id="sandbox-fg" class="sandbox-canvas sandbox-canvas-fg" aria-label="Game sandbox viewport"></canvas>
 
-      <!-- Crash Overlay -->
+      <!-- Game Over / Crash Overlay (Issue #33 Summary Panel) -->
       <div class="crash-overlay" id="crash-overlay" hidden>
         <div class="crash-panel">
-          <div class="crash-icon">💥</div>
-          <h2 class="crash-title">Crashed!</h2>
-          <p class="crash-sub">Your vehicle flipped out</p>
-          <button id="restart-btn" class="btn-restart">🔄 Restart</button>
+          <div class="crash-icon" id="crash-icon">💥</div>
+          <h2 class="crash-title" id="crash-title">Crashed!</h2>
+          <p class="crash-sub" id="crash-sub">Your vehicle flipped out</p>
+          <!-- Game Over Summary Stats (Issue #33) -->
+          <div class="game-over-stats">
+            <div class="go-stat">
+              <span class="go-label">📏 Distance</span>
+              <span class="go-value" id="go-dist">0 m</span>
+            </div>
+            <div class="go-stat">
+              <span class="go-label">🪙 Coins</span>
+              <span class="go-value" id="go-coins">0 🪙</span>
+            </div>
+            <div class="go-stat">
+              <span class="go-label">🔥 Stunt Bonus</span>
+              <span class="go-value" id="go-stunts">0 pts</span>
+            </div>
+            <div class="go-stat go-total-row">
+              <span class="go-label">⭐ Total Score</span>
+              <span class="go-value" id="go-total">0 pts</span>
+            </div>
+          </div>
+          <div class="go-actions">
+            <button id="restart-btn" class="btn-restart">🔄 Try Again <span style="font-size:0.75rem;opacity:0.8">[R]</span></button>
+            <a href="/" class="btn-change-car">🎨 Change Car</a>
+          </div>
         </div>
       </div>
 
     </div><!-- /.sandbox-stage -->
 
-    <!-- Mobile Touch Controls -->
-    <div class="touch-controls" id="touch-controls">
-      <button id="touch-brake" class="touch-btn" aria-label="Brake">⬅ Brake</button>
-      <button id="touch-gas"   class="touch-btn touch-btn-gas" aria-label="Accelerate">Gas ➡</button>
+    <!-- Mobile Touch Pedals -->
+    <div class="touch-controls pg-touch-pedals" id="touch-controls">
+      <button id="touch-brake" class="touch-pedal pedal-brake" aria-label="Brake / Air-Tilt Left">
+        <span class="pedal-icon">⬅</span>
+        <span class="pedal-title">BRAKE</span>
+        <span class="pedal-sub">Air-Tilt ↺</span>
+      </button>
+      <button id="touch-gas"   class="touch-pedal pedal-gas" aria-label="Gas / Air-Tilt Right">
+        <span class="pedal-icon">➡</span>
+        <span class="pedal-title">GAS</span>
+        <span class="pedal-sub">Air-Tilt ↻</span>
+      </button>
     </div>
 
     <!-- Feature explainer cards -->
