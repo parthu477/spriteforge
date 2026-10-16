@@ -645,6 +645,10 @@ function onJobDone(data) {
   if (progressEta) progressEta.hidden = true;
 
   resultCard.hidden = false;
+  const testDriveBtn = document.getElementById('test-drive-btn');
+  if (testDriveBtn && data.metadata?.name) {
+    testDriveBtn.href = `/physics?sprite=${encodeURIComponent(data.metadata.name)}`;
+  }
   const fullUrl = data.preview_url + '?t=' + Date.now();
   resultImg.src = fullUrl;
   currentActiveSprite = {
@@ -739,6 +743,7 @@ async function loadGallery() {
         <div class="gallery-item-footer">
           <span class="gallery-item-name">${s.name}</span>
           <div class="gallery-item-actions">
+            <a href="/physics?sprite=${encodeURIComponent(s.name)}" target="_blank" class="gallery-btn drive" title="Drive in Physics Sandbox">🚗</a>
             <button class="gallery-btn reroll-gallery" title="Re-roll">🎲</button>
             <button class="gallery-btn delete" title="Delete">🗑</button>
           </div>
@@ -763,6 +768,10 @@ async function loadGallery() {
         resultSection.hidden = false;
         resultCard.hidden = false;
         closeExportMenu();
+        const testDriveBtn = document.getElementById('test-drive-btn');
+        if (testDriveBtn) {
+          testDriveBtn.href = `/physics?sprite=${encodeURIComponent(sprite.name)}`;
+        }
         statusSpinner.style.display = 'none';
         statusText.textContent = `Previewing: ${sprite.name}`;
         progressStages.innerHTML = `<span class="stage-chip done">Ready</span>`;

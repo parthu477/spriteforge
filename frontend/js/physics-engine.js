@@ -234,6 +234,14 @@ class Chassis {
     // For flip detection
     this._roofContactTimer = 0;
 
+    // Issue #32: Custom Sprite & Vehicle Rigging
+    this.customSprite = null;   // { img, metadata, fw, fh }
+    this.presetName   = 'buggy';
+    this.rigging = {
+      rearAttachRatio:  0.20,  // 20% from rear bumper
+      frontAttachRatio: 0.80,  // 80% from rear bumper
+    };
+
     // Visual
     this._smokeParticles = [];
   }
@@ -393,6 +401,67 @@ class Chassis {
     this._roofContactTimer = 0;
   }
 
+  /** Issue #32: Rig a custom SpriteForge vehicle sprite onto the chassis */
+  setSprite(img, metadata = {}) {
+    if (!img) {
+      this.customSprite = null;
+      this.hw = 52;
+      this.hh = 26;
+      this.wheelBaseHalf = 44;
+      return;
+    }
+
+    const fw = metadata.frame_width  || img.naturalWidth  || 128;
+    const fh = metadata.frame_height || img.naturalHeight || 64;
+
+    this.customSprite = {
+      img,
+      metadata,
+      fw,
+      fh,
+      aspect: fw / Math.max(1, fh)
+    };
+
+    // Auto-scale chassis bounds proportionally (target display width ~110px)
+    const targetW = 110;
+    const targetH = Math.max(28, Math.min(60, targetW / this.customSprite.aspect));
+    this.hw = targetW / 2;
+    this.hh = targetH / 2;
+
+    this._applyRigging();
+  }
+
+  /** Issue #32: Apply suspension & wheel placement based on preset */
+  setPreset(presetName = 'buggy') {
+    this.presetName = presetName;
+    const presets = {
+      buggy:      { wheelRadius: 16, restLength: 55, stiffness: 2800, damping: 160, rear: 0.20, front: 0.80 },
+      truck:      { wheelRadius: 22, restLength: 62, stiffness: 3500, damping: 200, rear: 0.18, front: 0.82 },
+      sports:     { wheelRadius: 14, restLength: 48, stiffness: 3200, damping: 180, rear: 0.22, front: 0.78 },
+      motorcycle: { wheelRadius: 17, restLength: 52, stiffness: 2600, damping: 150, rear: 0.28, front: 0.72 },
+    };
+    const p = presets[presetName] || presets.buggy;
+
+    this.rigging.rearAttachRatio  = p.rear;
+    this.rigging.frontAttachRatio = p.front;
+
+    this.wheels.forEach(w => {
+      w.radius     = p.wheelRadius;
+      w.restLength = p.restLength;
+      w.stiffness  = p.stiffness;
+      w.damping    = p.damping;
+    });
+
+    this._applyRigging();
+  }
+
+  _applyRigging() {
+    const totalW = this.hw * 2;
+    const rearX  = -this.hw + (totalW * this.rigging.rearAttachRatio);
+    const frontX = -this.hw + (totalW * this.rigging.frontAttachRatio);
+    this.wheelBaseHalf = (frontX - rearX) / 2;
+  }
+
   /** Draw chassis + wheels on screen */
   draw(ctx, camX, camY, biomeId = 'countryside') {
     if (this.crashed) {
@@ -472,6 +541,26 @@ class Chassis {
 
   _drawBody(ctx, biomeId) {
     const hw = this.hw, hh = this.hh;
+
+    // Issue #32: If a custom SpriteForge vehicle is loaded, draw it!
+    if (this.customSprite && this.customSprite.img && this.customSprite.img.complete && this.customSprite.img.naturalWidth > 0) {
+      const s = this.customSprite;
+      const drawW = hw * 2;
+      const drawH = hh * 2.2;
+
+      // Draw shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, hh + 6, hw * 0.9, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Render sprite frame pixelated
+      ctx.imageSmoothingEnabled = false;
+      const sw = s.fw;
+      const sh = s.fh;
+      ctx.drawImage(s.img, 0, 0, sw, sh, -hw, -hh * 1.15, drawW, drawH);
+      return;
+    }
 
     // Biome-aware palette
     const palettes = {
