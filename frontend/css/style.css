@@ -5,6 +5,8 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+[hidden] { display: none !important; }
+
 :root {
   --bg: #0a0a12;
   --surface: rgba(255,255,255,0.04);
@@ -208,6 +210,9 @@ body {
   border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
   border-radius: 50%; animation: spin 0.7s linear infinite;
   vertical-align: middle;
+}
+.btn-loader[hidden] {
+  display: none;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
