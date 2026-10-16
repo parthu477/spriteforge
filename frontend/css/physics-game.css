@@ -1,0 +1,167 @@
+/* ============================================================
+   SpriteForge — physics-game.css
+   Styles specific to the Physics Sandbox page (Issue #31)
+   ============================================================ */
+
+/* ── Page base ───────────────────────────────────────────────── */
+body.physics-page { background: #080810; }
+
+/* ── Controls bar extras ─────────────────────────────────────── */
+.pg-controls-bar { flex-wrap: wrap; gap: 0.65rem; }
+
+.ctrl-input {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.6rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.ctrl-input:focus { border-color: rgba(139,92,246,0.6); }
+.ctrl-input::placeholder { color: #64748b; }
+
+/* ── Physics stage ───────────────────────────────────────────── */
+.pg-stage {
+  height: 500px;
+  cursor: crosshair;
+  background: #02040A;
+  border-radius: 18px;
+}
+
+/* ── Main canvas ─────────────────────────────────────────────── */
+.pg-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: block;
+  border-radius: 18px;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  z-index: 2;
+}
+
+/* ── Suspension indicator panel ──────────────────────────────── */
+.pg-susp-panel {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 0.5rem 0.8rem;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 130px;
+}
+
+.susp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.susp-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.68rem;
+  color: #94a3b8;
+  width: 34px;
+  text-align: right;
+}
+
+.susp-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.10);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.susp-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  transition: width 0.05s linear, background 0.2s;
+  background: #00FF88;
+}
+
+/* ── Airborne HUD cell ───────────────────────────────────────── */
+.pg-air-cell .hud-val {
+  font-size: 0.72rem;
+  color: #00FFFF;
+  letter-spacing: 0.05em;
+  min-width: unset;
+  text-shadow: 0 0 8px #00FFFF;
+}
+
+/* ── Debug overlay ───────────────────────────────────────────── */
+.pg-debug {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 15;
+  background: rgba(0,0,0,0.75);
+  color: #00FF88;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,255,136,0.3);
+  pointer-events: none;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+/* ── Touch controls (4 buttons: tilt-L / brake / gas / tilt-R) ─ */
+.pg-touch-controls {
+  display: none;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (pointer: coarse) {
+  .pg-touch-controls { display: grid; }
+}
+
+/* ── Suspension legend ───────────────────────────────────────── */
+.pg-legend {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Override stage height for physics (taller) ──────────────── */
+@media (max-width: 640px) {
+  .pg-stage      { height: 360px; }
+  .pg-susp-panel { display: none; }
+  .pg-legend     { display: none; }
+  .pg-controls-bar .ctrl-hints { display: none; }
+}
