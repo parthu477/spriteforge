@@ -1,6 +1,7 @@
 /* ============================================================
    SpriteForge — game-sandbox.js
    Interactive Game Sandbox: Vehicle + Parallax + Particles + Audio
+   Issue #33 — Driving Controls, Fuel System, Collectibles & HUD
    Issue #34 — Multi-Biome Parallax Environments & Retro Audio FX
    ============================================================ */
 'use strict';
@@ -21,47 +22,75 @@ class GameSandbox {
 
     // ── Physics / Vehicle state ─────────────────────────────────
     this.car = {
-      x: 200, y: 0,          // world X, canvas Y set after resize
+      x: 200, y: 0,
       vx: 0,  vy: 0,
       speed: 0,
       throttle: 0,
       braking: false,
       onGround: true,
-      angle: 0,              // degrees, for flip detection
+      angle: 0,
       flipped: false,
-      fuel: 100,             // 0–100
+      fuel: 100,             // 0–100, starts full (Issue #33)
       coins: 0,
       crashed: false,
       crashTimer: 0,
     };
 
+    // ── Gameplay & Scoring State (Issue #33) ────────────────────
+    this.distanceMeters  = 0;
+    this.stuntBonus      = 0;
+    this.totalScore      = 0;
+    this.currentAirTime  = 0;
+    this.airAngleDelta   = 0;
+    this._lastAngle      = 0;
+    this.floatingPopups  = [];
+
+    // ── Status Flags (Issue #33) ────────────────────────────────
+    this._gameOver       = false;
+    this._outOfFuel      = false;
+    this._fuelAlert      = false;
+    this._gameOverShown  = false;
+    this._lowSpeedTime   = 0;
+
     // ── Game objects ────────────────────────────────────────────
-    this.coins = [];
+    this.coins    = [];
     this.fuelCans = [];
 
     // ── Camera ──────────────────────────────────────────────────
     this.cameraX = 0;
 
-    // ── Input state ─────────────────────────────────────────────
+    // ── Input state (Dual Control Scheme: Keyboard + Touch) ──────
     this.keys = {};
-    this._touchThrottle = 0;
-    this._touchBrake    = 0;
+    this._touchState = { gas: 0, brake: 0 };
 
     // ── Biome / HUD refs ────────────────────────────────────────
     this.biomeSelect   = document.getElementById('biome-select');
     this.muteBtn       = document.getElementById('mute-btn');
+
+    // HUD elements (Issue #33)
+    this.hudDist       = document.getElementById('hud-dist');
     this.hudSpeed      = document.getElementById('hud-speed');
     this.hudFuel       = document.getElementById('hud-fuel');
     this.hudFuelBar    = document.getElementById('hud-fuel-bar');
+    this.hudFuelCell   = document.getElementById('hud-fuel-cell');
+    this.hudFuelWarn   = document.getElementById('hud-fuel-warn');
     this.hudCoins      = document.getElementById('hud-coins');
     this.hudBiome      = document.getElementById('hud-biome');
+    this.hudRpmBar     = document.getElementById('hud-rpm-bar');
+
+    // Game Over elements (Issue #33)
     this.crashOverlay  = document.getElementById('crash-overlay');
+    this.goIcon        = document.getElementById('crash-icon');
+    this.goTitle       = document.getElementById('crash-title');
+    this.goSub         = document.getElementById('crash-sub');
+    this.goDist        = document.getElementById('go-dist');
+    this.goCoins       = document.getElementById('go-coins');
+    this.goStunts      = document.getElementById('go-stunts');
+    this.goTotal       = document.getElementById('go-total');
     this.restartBtn    = document.getElementById('restart-btn');
 
     this._raf = null;
     this._lastTime = 0;
-    this._fuelAlertActive = false;
-    this._running = false;
 
     this._initEvents();
     this._resize();
@@ -70,11 +99,11 @@ class GameSandbox {
     this._loop(0);
   }
 
-  /* ── Events ─────────────────────────────────────────────────── */
+  /* ── Events (Dual Control Scheme: Keyboard + Touch Pedals) ── */
   _initEvents() {
     window.addEventListener('resize', () => this._resize());
     window.addEventListener('keydown', e => { this.keys[e.code] = true;  this._onKeyDown(e); });
-    window.addEventListener('keyup',   e => { this.keys[e.code] = false; this._onKeyUp(e);   });
+    window.addEventListener('keyup',   e => { this.keys[e.code] = false; });
 
     this.biomeSelect?.addEventListener('change', () => {
       this.renderer.setBiome(this.biomeSelect.value);
@@ -89,19 +118,45 @@ class GameSandbox {
 
     this.restartBtn?.addEventListener('click', () => this._restart());
 
-    // Touch controls
-    document.getElementById('touch-gas')?.addEventListener('touchstart',  e => { e.preventDefault(); this._touchThrottle = 1; this.audio.startEngine(); }, {passive:false});
-    document.getElementById('touch-gas')?.addEventListener('touchend',    e => { e.preventDefault(); this._touchThrottle = 0; }, {passive:false});
-    document.getElementById('touch-brake')?.addEventListener('touchstart',e => { e.preventDefault(); this._touchBrake = 1; }, {passive:false});
-    document.getElementById('touch-brake')?.addEventListener('touchend',  e => { e.preventDefault(); this._touchBrake = 0; }, {passive:false});
+    // On-Screen Touch Pedals with pointer events (zero latency, Issue #33)
+    const gasPedal   = document.getElementById('touch-gas');
+    const brakePedal = document.getElementById('touch-brake');
+
+    const setupPedal = (el, type) => {
+      if (!el) return;
+      const press = () => {
+        this._touchState[type] = 1;
+        el.classList.add('pedal-pressed');
+        if (type === 'gas' && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
+          this.audio.startEngine();
+        }
+      };
+      const release = () => {
+        this._touchState[type] = 0;
+        el.classList.remove('pedal-pressed');
+      };
+      el.addEventListener('pointerdown',   e => { e.preventDefault(); press();   });
+      el.addEventListener('pointerup',     e => { e.preventDefault(); release(); });
+      el.addEventListener('pointercancel', e => { e.preventDefault(); release(); });
+      el.addEventListener('pointerleave',  e => { e.preventDefault(); release(); });
+      el.addEventListener('touchstart',  e => { e.preventDefault(); press();   }, { passive: false });
+      el.addEventListener('touchend',    e => { e.preventDefault(); release(); }, { passive: false });
+      el.addEventListener('touchcancel', e => { e.preventDefault(); release(); }, { passive: false });
+    };
+
+    setupPedal(gasPedal,   'gas');
+    setupPedal(brakePedal, 'brake');
   }
 
   _onKeyDown(e) {
-    if (e.code === 'ArrowRight' || e.code === 'KeyD') this.audio.startEngine();
-  }
-  _onKeyUp(e) {
-    if ((e.code === 'ArrowRight' || e.code === 'KeyD') && !this.keys['ArrowLeft'] && !this.keys['KeyA']) {
-      // engine idle when releasing throttle — updateEngineSound will handle fade
+    // Instant restart run via 'R' key (Specification 1, Issue #33)
+    if (e.code === 'KeyR') { this._restart(); return; }
+
+    // Gas keys — start engine audio (zero latency)
+    const isGas = (e.code === 'ArrowRight' || e.code === 'KeyD' ||
+                   e.code === 'ArrowUp'    || e.code === 'KeyW');
+    if (isGas && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
+      this.audio.startEngine();
     }
   }
 
@@ -123,22 +178,26 @@ class GameSandbox {
     this.car.y = this.groundY;
   }
 
-  /* ── Spawn objects ───────────────────────────────────────────── */
+  /* ── Spawn Collectibles (Issue #33) ─────────────────────────── */
   _spawnCoins() {
     this.coins = [];
+    // Coins along hill crests (+100) and ramps/valleys (+50) (Issue #33)
     for (let i = 0; i < 20; i++) {
+      const isCrest = (i % 4 === 0);
       this.coins.push({
         wx: 300 + i * 320 + Math.random() * 100,
-        wy: 0, // set in update based on ground
+        wy: 0,
         r: 14,
         collected: false,
         animT: Math.random() * Math.PI * 2,
+        value: isCrest ? 100 : 50,
       });
     }
   }
 
   _spawnFuelCans() {
     this.fuelCans = [];
+    // Red fuel canisters along hills (Issue #33)
     for (let i = 0; i < 8; i++) {
       this.fuelCans.push({
         wx: 800 + i * 900 + Math.random() * 200,
@@ -157,184 +216,285 @@ class GameSandbox {
     this._raf = requestAnimationFrame(t => this._loop(t));
   }
 
-  /* ── Physics Update ─────────────────────────────────────────── */
+  /* ── Physics Update (Issue #33 full gameplay loop) ──────────── */
   _update(dt) {
     if (dt <= 0) return;
     const car    = this.car;
     const biome  = this.renderer.currentBiome;
     const gY     = this.H * biome.groundLine - 30;
-    const gravity = biome.id === 'moon' ? 180 : 600;
+    const gravity  = biome.id === 'moon' ? 180 : 600;
     const friction = biome.id === 'moon' ? 0.97 : 0.90;
     const maxSpeed = biome.id === 'moon' ? 7 : 12;
 
-    if (car.crashed) {
-      car.crashTimer -= dt;
-      if (car.crashTimer <= 0) this._showCrashOverlay();
+    // ── Game over stall ─────────────────────────────────────────
+    if (this._gameOver) {
+      if (!this._gameOverShown) {
+        this._gameOverShown = true;
+        this._showGameOver();
+      }
       this.renderer.draw(this.cameraX);
       this._drawForeground();
       return;
     }
 
-    // ── Input → forces ─────────────────────────────────────────
-    const throttleRight = (this.keys['ArrowRight'] || this.keys['KeyD'] || this._touchThrottle) ? 1 : 0;
-    const throttleLeft  = (this.keys['ArrowLeft']  || this.keys['KeyA']) ? 1 : 0;
-    const brakeKey      = (this.keys['ArrowDown']  || this.keys['KeyS'] || this._touchBrake) ? 1 : 0;
-
-    car.throttle = throttleRight > 0 ? 1 : (throttleLeft > 0 ? 0.5 : 0);
-    car.braking  = brakeKey > 0;
-
-    if (car.fuel > 0) {
-      const accel = 280;
-      if (throttleRight) car.vx += accel * dt;
-      if (throttleLeft)  car.vx -= accel * dt * 0.7;
+    // ── Crash countdown ─────────────────────────────────────────
+    if (car.crashed) {
+      car.crashTimer -= dt;
+      if (car.crashTimer <= 0) this._gameOver = true;
+      this.renderer.draw(this.cameraX);
+      this._drawForeground();
+      return;
     }
 
-    // Braking
-    if (car.braking && Math.abs(car.vx) > 0.5) {
-      const brakeFactor = 0.85;
-      car.vx *= brakeFactor;
-      if (car.onGround && Math.abs(car.vx) > 3) this.audio.playBrakeSqueal(Math.min(Math.abs(car.vx)/8, 1));
+    // ── Input → forces ──────────────────────────────────────────
+    // W/D/↑/→ = Gas/Tilt-Right | S/A/↓/← = Brake/Tilt-Left (Spec 1)
+    const gasDown   = (this.keys['ArrowRight'] || this.keys['KeyD'] ||
+                       this.keys['ArrowUp']    || this.keys['KeyW'] ||
+                       this._touchState.gas);
+    const brakeDown = (this.keys['ArrowLeft']  || this.keys['KeyA'] ||
+                       this.keys['ArrowDown']   || this.keys['KeyS'] ||
+                       this._touchState.brake);
+
+    car.throttle = gasDown ? 1 : 0;
+    car.braking  = !!brakeDown;
+
+    if (car.onGround) {
+      if (car.fuel > 0 && gasDown) car.vx += 280 * dt;
+      if (brakeDown) {
+        if (car.vx > 0.5) {
+          car.vx *= 0.85;
+          if (Math.abs(car.vx) > 3 * 60) this.audio.playBrakeSqueal(Math.min(Math.abs(car.vx) / (8 * 60), 1));
+        } else if (car.vx > -maxSpeed * 60 * 0.4) {
+          car.vx -= 140 * dt; // allow some reverse
+        }
+      }
+    } else {
+      // Mid-air: A/D or ←/→ apply rotational torque (Spec 1, Issue #33)
+      if (gasDown)   car.angle += 90 * dt;  // Clockwise tilt-right
+      if (brakeDown) car.angle -= 90 * dt;  // Counter-clockwise tilt-left
     }
 
     // Friction & max speed
-    if (!throttleRight && !throttleLeft) car.vx *= friction;
-    car.vx = Math.max(-maxSpeed * 60, Math.min(maxSpeed * 60, car.vx)); // px/s
-
-    // Convert to speed units for audio/HUD
+    if (!gasDown && !brakeDown) car.vx *= friction;
+    car.vx = Math.max(-maxSpeed * 60 * 0.4, Math.min(maxSpeed * 60, car.vx));
     car.speed = car.vx / 60;
 
     // Gravity
     if (!car.onGround) {
       car.vy += gravity * dt;
-      // Air tilt
-      car.angle += (car.vx > 0 ? 1.5 : -1.5) * dt * 30;
+      if (!gasDown && !brakeDown) car.angle += (car.vx > 0 ? 1.0 : -1.0) * dt * 15;
     } else {
       car.vy = 0;
-      car.angle *= 0.8;
-    }
-
-    // ── Jump (space / up) ────────────────────────────────────────
-    if ((this.keys['Space'] || this.keys['ArrowUp'] || this.keys['KeyW']) && car.onGround) {
-      car.vy = biome.id === 'moon' ? -320 : -420;
-      car.onGround = false;
+      car.angle *= 0.78; // gradually level on ground
     }
 
     // ── Position update ─────────────────────────────────────────
     car.y += car.vy * dt;
-    // Camera follows car X; car stays center-ish
-    const targetCamX = this.cameraX + car.vx * dt;
-    this.cameraX = targetCamX;
+    this.cameraX += car.vx * dt;
 
-    // Clamp car Y to ground
+    // Distance meter in meters (Issue #33)
+    if (car.vx > 0) this.distanceMeters += (car.vx * dt) / 60;
+
+    // ── Ground detection ────────────────────────────────────────
     if (car.y >= gY) {
-      car.y = gY;
-      car.vy = 0;
-      car.onGround = true;
+      // Air-time bonus (Issue #33)
+      if (!car.onGround && this.currentAirTime > 0.7) {
+        const airPts = Math.round(this.currentAirTime * 150);
+        this.stuntBonus += airPts;
+        this.totalScore += airPts;
+        this._spawnPopup(`+${airPts} AIR`, this.W * 0.35, gY - 60);
+      }
+      // Flip stunt detection (Issue #33)
+      if (!car.onGround && Math.abs(this.airAngleDelta) >= 340) {
+        const stuntName = car.angle > 0 ? 'FRONTFLIP!' : 'BACKFLIP!';
+        this.stuntBonus  += 500;
+        this.totalScore  += 500;
+        this._spawnPopup(`${stuntName} +500`, this.W * 0.35, gY - 80);
+        this.audio.playCoinPickup?.();
+      }
 
-      // Flip detection: |angle| > 120° counts as crash
+      car.y = gY; car.vy = 0; car.onGround = true;
+      this.currentAirTime = 0;
+      this.airAngleDelta  = 0;
+      this._lastAngle     = car.angle;
+
+      // Flip crash on hard landing
       if (Math.abs(car.angle) > 120 && Math.abs(car.vx) > 3 * 60) {
-        this._triggerCrash();
+        this._triggerCrash('flip');
         return;
       }
+    } else if (car.onGround) {
+      car.onGround = false;
+      this._lastAngle = car.angle;
+    } else {
+      this.currentAirTime += dt;
+      this.airAngleDelta  += car.angle - this._lastAngle;
+      this._lastAngle      = car.angle;
     }
 
-    // ── Fuel consumption ────────────────────────────────────────
-    if (car.throttle > 0 && car.fuel > 0) {
-      car.fuel = Math.max(0, car.fuel - dt * 2.5);
+    // ── Fuel Consumption (Issue #33) ────────────────────────────
+    // Baseline idle drain ~1.2%/s + throttle drain +3.8%/s
+    if (car.fuel > 0) {
+      let drain = 1.2 * dt;
+      if (car.throttle > 0) drain += 3.8 * dt;
+      car.fuel = Math.max(0, car.fuel - drain);
     }
-    if (car.fuel < 20 && !this._fuelAlertActive) {
-      this._fuelAlertActive = true;
-      this.audio.startFuelAlert();
+
+    // Low fuel red warning alarm < 20% (Issue #33)
+    if (car.fuel < 20 && !this._fuelAlert) {
+      this._fuelAlert = true;
+      this.audio.startFuelAlert?.();
+      this.hudFuelCell?.classList.add('fuel-warning');
+      if (this.hudFuelWarn) this.hudFuelWarn.hidden = false;
     }
-    if (car.fuel === 0 && this._fuelAlertActive) {
-      this.audio.stopFuelAlert();
-      this._fuelAlertActive = false;
+    if (car.fuel >= 20 && this._fuelAlert) {
+      this._fuelAlert = false;
+      this.audio.stopFuelAlert?.();
+      this.hudFuelCell?.classList.remove('fuel-warning');
+      if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
+    }
+
+    // Out of Fuel Game Over: fuel=0 AND vehicle nearly stopped (Issue #33)
+    if (car.fuel === 0) {
+      if (Math.abs(car.vx) < 12) {
+        this._lowSpeedTime += dt;
+        if (this._lowSpeedTime >= 0.9) { this._triggerCrash('fuel'); return; }
+      } else {
+        this._lowSpeedTime = 0;
+      }
+    } else {
+      this._lowSpeedTime = 0;
     }
 
     // ── Particle emission ────────────────────────────────────────
-    const particles = this.renderer.particles;
-    const screenCarX = this.W * 0.35; // car render position on screen
-    const wheelY = car.y + 32;
-
-    // Tire dirt/smoke on acceleration
+    const particles  = this.renderer.particles;
+    const screenCarX = this.W * 0.35;
+    const wheelY     = car.y + 32;
     if (car.onGround && Math.abs(car.vx) > 1) {
       particles.emitTireDirt(screenCarX - 18, wheelY, car.speed, true);
       particles.emitTireDirt(screenCarX + 18, wheelY, car.speed, true);
     }
-    // Exhaust puffs
     if (car.throttle > 0 || Math.abs(car.speed) > 1) {
       particles.emitExhaust(screenCarX - 44, car.y + 8, car.speed);
     }
 
-    // ── Coin collection ─────────────────────────────────────────
+    // ── Coin collection (Issue #33) ─────────────────────────────
     this.coins.forEach(coin => {
       if (coin.collected) return;
       coin.animT += dt * 3;
       coin.wy = gY - 40 + Math.sin(coin.animT) * 8;
-      const coinScreenX = coin.wx - this.cameraX + this.W * 0.35;
-      const dx = coinScreenX - screenCarX;
+      const coinSX = coin.wx - this.cameraX + screenCarX;
+      const dx = coinSX - screenCarX;
       const dy = coin.wy - car.y;
-      if (Math.sqrt(dx*dx + dy*dy) < coin.r + 28) {
+      if (Math.sqrt(dx * dx + dy * dy) < coin.r + 28) {
         coin.collected = true;
         car.coins++;
-        particles.emitCoinPickup(coinScreenX, coin.wy);
-        this.audio.playCoinPickup();
+        this.totalScore += coin.value;
+        particles.emitCoinPickup(coinSX, coin.wy);
+        this.audio.playCoinPickup?.();
+        this._spawnPopup(`+${coin.value}`, coinSX, coin.wy - 20);
       }
     });
 
-    // ── Fuel can collection ──────────────────────────────────────
+    // ── Fuel canister collection (restores 100%, Issue #33) ─────
     this.fuelCans.forEach(fc => {
       if (fc.collected) return;
-      const fcScreenX = fc.wx - this.cameraX + this.W * 0.35;
-      const dx = fcScreenX - screenCarX;
-      const dy = (gY - 20) - car.y;
-      if (Math.sqrt(dx*dx + dy*dy) < fc.r + 28) {
+      const fcSX = fc.wx - this.cameraX + screenCarX;
+      const dx   = fcSX - screenCarX;
+      const dy   = (gY - 20) - car.y;
+      if (Math.sqrt(dx * dx + dy * dy) < fc.r + 28) {
         fc.collected = true;
-        car.fuel = Math.min(100, car.fuel + 35);
-        if (car.fuel >= 20 && this._fuelAlertActive) {
-          this._fuelAlertActive = false;
-          this.audio.stopFuelAlert();
+        car.fuel = 100; // full restore
+        if (this._fuelAlert) {
+          this._fuelAlert = false;
+          this.audio.stopFuelAlert?.();
+          this.hudFuelCell?.classList.remove('fuel-warning');
+          if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
         }
-        particles.emitCoinPickup(fcScreenX, gY - 20);
+        particles.emitCoinPickup(fcSX, gY - 20);
+        this._spawnPopup('⛽ FULL!', fcSX, gY - 50);
       }
     });
 
-    // ── Audio engine update ─────────────────────────────────────
-    this.audio.updateEngineSound(car.speed, car.throttle);
+    // ── Floating popup lifetime ──────────────────────────────────
+    this.floatingPopups = this.floatingPopups.filter(p => p.alpha > 0);
+    this.floatingPopups.forEach(p => { p.y -= 55 * dt; p.alpha -= 0.9 * dt; });
 
-    // ── HUD update ───────────────────────────────────────────────
+    // ── Audio engine update ─────────────────────────────────────
+    this.audio.updateEngineSound?.(car.speed, car.throttle);
+
+    // ── HUD update (Issue #33) ───────────────────────────────────
     this._updateHUD();
   }
 
-  /* ── Trigger crash ───────────────────────────────────────────── */
-  _triggerCrash() {
-    const car = this.car;
-    car.crashed   = true;
-    car.crashTimer = 1.8;
-    const screenCarX = this.W * 0.35;
-    this.renderer.particles.emitCrash(screenCarX, car.y);
-    this.audio.playCrash();
-    this.audio.stopEngine();
-    this._fuelAlertActive = false;
-    this.audio.stopFuelAlert();
+  /* ── Spawn floating score popup (Issue #33) ─────────────────── */
+  _spawnPopup(text, x, y) {
+    this.floatingPopups.push({ text, x, y, alpha: 1.0 });
   }
 
-  _showCrashOverlay() {
-    if (this.crashOverlay) this.crashOverlay.hidden = false;
+  /* ── Trigger crash / game over (Issue #33) ─────────────────── */
+  _triggerCrash(reason) {
+    const car = this.car;
+    if (reason === 'fuel') {
+      this._outOfFuel = true;
+      this._gameOver  = true;
+      this.audio.stopEngine?.();
+      this.audio.stopFuelAlert?.();
+      this._fuelAlert = false;
+    } else {
+      car.crashed    = true;
+      car.crashTimer = 1.8;
+      const screenCarX = this.W * 0.35;
+      this.renderer.particles.emitCrash(screenCarX, car.y);
+      this.audio.playCrash?.();
+      this.audio.stopEngine?.();
+      this._fuelAlert = false;
+      this.audio.stopFuelAlert?.();
+    }
+  }
+
+  /* ── Show Game Over Summary (Issue #33) ─────────────────────── */
+  _showGameOver() {
+    if (!this.crashOverlay) return;
+    const dist  = Math.round(this.distanceMeters);
+    const total = this.totalScore + dist;
+    if (this.goIcon)   this.goIcon.textContent  = this._outOfFuel ? '⛽' : '💥';
+    if (this.goTitle)  this.goTitle.textContent  = this._outOfFuel ? 'Out of Fuel!' : 'Crashed!';
+    if (this.goSub)    this.goSub.textContent    = this._outOfFuel
+      ? 'Tank empty! Collect fuel canisters next time.'
+      : 'Your vehicle flipped out of control.';
+    if (this.goDist)   this.goDist.textContent   = `${dist} m`;
+    if (this.goCoins)  this.goCoins.textContent  = `${this.car.coins} 🪙`;
+    if (this.goStunts) this.goStunts.textContent = `${this.stuntBonus} pts`;
+    if (this.goTotal)  this.goTotal.textContent  = `${total} pts`;
+    this.crashOverlay.hidden = false;
   }
 
   _restart() {
     const car = this.car;
-    car.x = 200; car.vx = 0; car.vy = 0;
+    car.vx = 0; car.vy = 0;
     car.speed = 0; car.throttle = 0; car.braking = false;
     car.onGround = true; car.angle = 0; car.flipped = false;
     car.fuel = 100; car.coins = 0; car.crashed = false; car.crashTimer = 0;
-    this.cameraX = 0;
+    this.cameraX        = 0;
+    this.distanceMeters = 0;
+    this.stuntBonus     = 0;
+    this.totalScore     = 0;
+    this.currentAirTime = 0;
+    this.airAngleDelta  = 0;
+    this.floatingPopups = [];
+    this._gameOver      = false;
+    this._outOfFuel     = false;
+    this._fuelAlert     = false;
+    this._gameOverShown = false;
+    this._lowSpeedTime  = 0;
+    this.hudFuelCell?.classList.remove('fuel-warning');
+    if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
     if (this.crashOverlay) this.crashOverlay.hidden = true;
-    this._fuelAlertActive = false;
-    this.audio.stopFuelAlert();
+    this.audio.stopFuelAlert?.();
     this._spawnCoins();
     this._spawnFuelCans();
+    this._setCarGroundY();
   }
 
   /* ── Draw ────────────────────────────────────────────────────── */
@@ -352,7 +512,7 @@ class GameSandbox {
     const gY     = H * biome.groundLine - 30;
     const carSX  = W * 0.35; // car screen X
 
-    // Draw uncollected coins
+    // Draw uncollected coins — star icon for high-value crests (Issue #33)
     this.coins.forEach(coin => {
       if (coin.collected) return;
       const cx = coin.wx - this.cameraX + carSX;
@@ -360,7 +520,6 @@ class GameSandbox {
       ctx.save();
       ctx.shadowColor = '#FFD700';
       ctx.shadowBlur  = 14;
-      // Coin body
       const cg = ctx.createRadialGradient(cx - 3, coin.wy - 3, 1, cx, coin.wy, coin.r);
       cg.addColorStop(0, '#FFF9C4');
       cg.addColorStop(0.5, '#FFD700');
@@ -369,12 +528,23 @@ class GameSandbox {
       ctx.beginPath();
       ctx.arc(cx, coin.wy, coin.r, 0, Math.PI * 2);
       ctx.fill();
-      // $ symbol
       ctx.fillStyle = '#8B6914';
-      ctx.font = 'bold 11px Space Mono, monospace';
+      ctx.font = 'bold 10px Space Mono, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('$', cx, coin.wy);
+      ctx.fillText(coin.value === 100 ? '★' : '$', cx, coin.wy);
+      ctx.restore();
+    });
+
+    // Draw floating score popups (Issue #33)
+    this.floatingPopups?.forEach(p => {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.alpha);
+      ctx.font = 'bold 15px Space Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#FFD700';
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 6;
+      ctx.fillText(p.text, p.x, p.y);
       ctx.restore();
     });
 
@@ -495,23 +665,31 @@ class GameSandbox {
     });
   }
 
-  /* ── HUD ─────────────────────────────────────────────────────── */
+  /* ── HUD Update (Issue #33: Distance, Speed, RPM, Fuel, Coins) ─ */
   _updateHUD() {
     const { car } = this;
-    if (this.hudSpeed)   this.hudSpeed.textContent   = Math.abs(Math.round(car.speed * 10)) + ' km/h';
-    if (this.hudFuel)    this.hudFuel.textContent    = Math.round(car.fuel) + '%';
-    if (this.hudCoins)   this.hudCoins.textContent   = car.coins;
+    const speed = Math.abs(Math.round(car.speed * 10));
+    const rpm   = Math.min(1, Math.abs(car.vx) / (12 * 60));
+
+    if (this.hudDist)   this.hudDist.textContent   = `${Math.round(this.distanceMeters)} m`;
+    if (this.hudSpeed)  this.hudSpeed.textContent  = `${speed} km/h`;
+    if (this.hudCoins)  this.hudCoins.textContent  = car.coins;
+    if (this.hudRpmBar) this.hudRpmBar.style.width = `${Math.round(rpm * 100)}%`;
+
+    // Fuel bar with Green→Orange→Red gradient (Issue #33)
+    if (this.hudFuel)    this.hudFuel.textContent    = `${Math.round(car.fuel)}%`;
     if (this.hudFuelBar) {
-      this.hudFuelBar.style.width = car.fuel + '%';
-      this.hudFuelBar.style.backgroundColor =
-        car.fuel > 50 ? '#4CAF50' : car.fuel > 20 ? '#FF9800' : '#F44336';
+      this.hudFuelBar.style.width = `${car.fuel}%`;
+      if      (car.fuel > 50) this.hudFuelBar.style.backgroundColor = '#4CAF50';
+      else if (car.fuel > 20) this.hudFuelBar.style.backgroundColor = '#FF9800';
+      else                    this.hudFuelBar.style.backgroundColor = '#F44336';
     }
   }
 
   destroy() {
     if (this._raf) cancelAnimationFrame(this._raf);
-    this.audio.stopEngine();
-    this.audio.stopFuelAlert();
+    this.audio.stopEngine?.();
+    this.audio.stopFuelAlert?.();
   }
 }
 
