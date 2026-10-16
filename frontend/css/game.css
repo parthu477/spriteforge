@@ -1,0 +1,372 @@
+/* ============================================================
+   SpriteForge — game.css
+   Styles for the Game Sandbox page (Issue #34)
+   ============================================================ */
+
+/* ── Page layout ─────────────────────────────────────────────── */
+body.game-page {
+  background: #0a0a12;
+  min-height: 100vh;
+}
+
+.game-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 3rem;
+}
+
+/* ── Hero ────────────────────────────────────────────────────── */
+.game-hero {
+  text-align: center;
+  padding: 2.5rem 0 1.2rem;
+}
+
+.game-title {
+  font-family: 'Space Mono', monospace;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+  line-height: 1.15;
+}
+
+.game-subtitle {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.95rem;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+/* ── Controls bar ────────────────────────────────────────────── */
+.sandbox-controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 0.75rem 1.2rem;
+  margin-bottom: 1rem;
+  backdrop-filter: blur(8px);
+}
+
+.ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ctrl-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+}
+
+.ctrl-select {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.38rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  outline: none;
+}
+.ctrl-select:hover { border-color: rgba(139,92,246,0.6); }
+.ctrl-select option { background: #1e1e2e; }
+
+.ctrl-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.ctrl-btn:hover { background: rgba(255,255,255,0.12); }
+.ctrl-btn.muted { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+
+.ctrl-hints {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.hint-chip {
+  background: rgba(139,92,246,0.12);
+  border: 1px solid rgba(139,92,246,0.25);
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-family: 'Space Mono', monospace;
+  color: #c4b5fd;
+  white-space: nowrap;
+}
+
+/* ── Sandbox Stage ───────────────────────────────────────────── */
+.sandbox-stage {
+  position: relative;
+  width: 100%;
+  height: 480px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow:
+    0 0 0 1px rgba(139,92,246,0.15),
+    0 20px 60px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  cursor: none;
+  background: #0a0a1a;
+}
+
+.sandbox-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.sandbox-canvas-bg { z-index: 1; }
+.sandbox-canvas-fg { z-index: 2; }
+
+/* ── HUD ─────────────────────────────────────────────────────── */
+.sandbox-hud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+
+.hud-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 9px;
+  padding: 0.3rem 0.7rem;
+  backdrop-filter: blur(6px);
+}
+
+.hud-icon { font-size: 0.9rem; }
+
+.hud-val {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  min-width: 2.5rem;
+  letter-spacing: 0.02em;
+}
+
+.hud-fuel-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hud-fuel-track {
+  width: 60px;
+  height: 4px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hud-fuel-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s, background-color 0.5s;
+  background: #4CAF50;
+}
+
+.hud-biome-cell .hud-val {
+  font-size: 0.72rem;
+  min-width: unset;
+}
+
+/* ── Crash Overlay ───────────────────────────────────────────── */
+.crash-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.3s ease;
+}
+
+.crash-panel {
+  text-align: center;
+  background: rgba(30,10,50,0.9);
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 20px;
+  padding: 2.5rem 3rem;
+  box-shadow: 0 0 40px rgba(239,68,68,0.2), 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.crash-icon {
+  font-size: 3.5rem;
+  margin-bottom: 0.5rem;
+  animation: shake 0.4s ease;
+}
+
+.crash-title {
+  font-family: 'Space Mono', monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #f87171;
+  margin: 0 0 0.4rem;
+}
+
+.crash-sub {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem;
+}
+
+.btn-restart {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.7rem 1.8rem;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s;
+  box-shadow: 0 4px 20px rgba(124,58,237,0.35);
+}
+.btn-restart:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(124,58,237,0.5);
+}
+
+/* ── Touch controls ──────────────────────────────────────────── */
+.touch-controls {
+  display: none;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+}
+
+@media (pointer: coarse) {
+  .touch-controls { display: flex; }
+}
+
+.touch-btn {
+  flex: 1;
+  padding: 1.1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.07);
+  color: #e2e8f0;
+  font-family: 'Space Mono', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.1s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-btn:active { background: rgba(139,92,246,0.25); transform: scale(0.97); }
+.touch-btn-gas    { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.3); }
+
+/* ── Feature Cards ───────────────────────────────────────────── */
+.feature-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.feat-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.feat-card:hover {
+  border-color: rgba(139,92,246,0.4);
+  transform: translateY(-3px);
+}
+
+.feat-icon {
+  font-size: 2rem;
+  margin-bottom: 0.6rem;
+}
+
+.feat-card h3 {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  margin: 0 0 0.4rem;
+}
+
+.feat-card p {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ── Nav links tweak ─────────────────────────────────────────── */
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-link {
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.nav-link:hover { color: #e2e8f0; }
+
+/* ── Animations ──────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; } to { opacity: 1; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate(0,0) rotate(0deg); }
+  20%       { transform: translate(-4px,2px) rotate(-3deg); }
+  40%       { transform: translate(4px,-2px) rotate(3deg); }
+  60%       { transform: translate(-3px,3px) rotate(-2deg); }
+  80%       { transform: translate(3px,-3px) rotate(2deg); }
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .sandbox-stage { height: 320px; }
+  .sandbox-controls-bar { gap: 0.6rem; }
+  .ctrl-hints { display: none; }
+  .hud-biome-cell { display: none; }
+  .crash-panel { padding: 1.8rem 1.5rem; }
+}
