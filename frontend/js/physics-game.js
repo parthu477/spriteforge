@@ -81,6 +81,11 @@ class PhysicsGame {
     this.newTerrainBtn = document.getElementById('pg-new-terrain-btn');
     this.muteBtn       = document.getElementById('pg-mute-btn');
 
+    // Issue #32: Vehicle importer elements
+    this.vehicleSelect = document.getElementById('pg-vehicle-select');
+    this.presetSelect  = document.getElementById('pg-preset-select');
+    this.spriteGallery = [];
+
     // ── Debug overlay ──────────────────────────────────────────
     this.debugEl = document.getElementById('pg-debug');
     this.showDebug = false;
@@ -93,11 +98,70 @@ class PhysicsGame {
     this.chassis.reset(200, this.terrain);
 
     this._initEvents();
+    this._initVehicleImporter();
     this._resize();
     this._loop(0);
   }
 
   /* ── Events ──────────────────────────────────────────────────── */
+  /** Issue #32: Query /api/sprites, handle ?sprite= param, and wire dropdowns */
+  async _initVehicleImporter() {
+    this.presetSelect?.addEventListener('change', (e) => {
+      this.chassis.setPreset(e.target.value);
+    });
+
+    this.vehicleSelect?.addEventListener('change', (e) => {
+      const selected = e.target.value;
+      if (!selected) {
+        this.chassis.setSprite(null);
+      } else {
+        this.loadSpriteByName(selected);
+      }
+    });
+
+    try {
+      const resp = await fetch('/api/sprites');
+      if (resp.ok) {
+        this.spriteGallery = await resp.json();
+        this._populateVehicleSelect();
+
+        // Auto-load from URL query param: ?sprite=<name>
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetSprite = urlParams.get('sprite');
+        if (targetSprite) {
+          if (this.vehicleSelect) this.vehicleSelect.value = targetSprite;
+          this.loadSpriteByName(targetSprite);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch SpriteForge sprites for sandbox:', err);
+    }
+  }
+
+  _populateVehicleSelect() {
+    if (!this.vehicleSelect) return;
+    this.vehicleSelect.innerHTML = '<option value="">Default Procedural Buggy</option>';
+    this.spriteGallery.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.name;
+      opt.textContent = `🚗 ${item.name} (${item.metadata?.rows || 1}×${item.metadata?.columns || 1})`;
+      this.vehicleSelect.appendChild(opt);
+    });
+  }
+
+  loadSpriteByName(name) {
+    const item = this.spriteGallery.find(s => s.name === name);
+    if (!item) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      this.chassis.setSprite(img, item.metadata || {});
+      this.chassis.reset(this.chassis.pos.x, this.terrain);
+    };
+    img.src = item.image_url;
+  }
+
   _initEvents() {
     window.addEventListener('resize', () => this._resize());
     window.addEventListener('keydown', e => { this.keys[e.code] = true;  this._onKeyDown(e); });
