@@ -638,6 +638,7 @@ const animationPlayer = new SpriteAnimationPlayer();
 function onJobDone(data) {
   cleanupTracking();
   setGenerating(false);
+  closeExportMenu();
   statusSpinner.style.display = 'none';
   if (progressPercent) progressPercent.textContent = '100%';
   if (progressBarFill) progressBarFill.style.width = '100%';
@@ -693,6 +694,7 @@ function setGenerating(on) {
   generateBtn.disabled = on;
   btnText.hidden = on;
   btnLoader.hidden = !on;
+  if (on) closeExportMenu();
 }
 
 function showResult() {
@@ -760,6 +762,7 @@ async function loadGallery() {
         // Reveal result section & card
         resultSection.hidden = false;
         resultCard.hidden = false;
+        closeExportMenu();
         statusSpinner.style.display = 'none';
         statusText.textContent = `Previewing: ${sprite.name}`;
         progressStages.innerHTML = `<span class="stage-chip done">Ready</span>`;

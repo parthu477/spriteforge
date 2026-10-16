@@ -789,6 +789,10 @@ body {
   animation: drop-fade-in 0.18s ease-out;
 }
 
+.export-menu[hidden] {
+  display: none !important;
+}
+
 @keyframes drop-fade-in {
   from { opacity: 0; transform: translate(-50%, 6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
