@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SpriteForge Physics Sandbox — 2D procedural terrain, spring suspension vehicle physics, smooth camera, retro audio. Issue #31.">
+  <title>SpriteForge — Physics Sandbox</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/game.css">
+  <link rel="stylesheet" href="/static/css/physics-game.css">
+</head>
+<body class="game-page physics-page">
+
+  <div class="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="brand-icon">⚡</span>
+      <span class="brand-name">SpriteForge</span>
+    </div>
+    <div class="nav-links">
+      <a href="/"     class="nav-link">← Generator</a>
+      <a href="/game" class="nav-link">🎨 Biome Sandbox</a>
+      <a href="/api/health" target="_blank" class="nav-health" id="health-indicator" title="API Health">● Live</a>
+    </div>
+  </nav>
+
+  <main class="game-main">
+
+    <!-- Header -->
+    <header class="game-hero">
+      <h1 class="game-title">
+        <span class="gradient-text">Physics Sandbox</span>
+      </h1>
+      <p class="game-subtitle">Procedural terrain · Spring suspension · Smooth camera · Retro audio</p>
+    </header>
+
+    <!-- Controls bar -->
+    <div class="sandbox-controls-bar pg-controls-bar">
+
+      <div class="ctrl-group">
+        <label for="pg-biome-select" class="ctrl-label">🌍 Biome</label>
+        <select id="pg-biome-select" class="ctrl-select">
+          <option value="countryside">🌄 Countryside</option>
+          <option value="desert">🏜️ Desert</option>
+          <option value="cyberpunk">🌆 Cyberpunk</option>
+          <option value="moon">🌑 Moon</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <label for="pg-seed-input" class="ctrl-label">🎲 Seed</label>
+        <input id="pg-seed-input" type="number" class="ctrl-input" placeholder="auto" min="1" max="65535" style="width:80px">
+        <button id="pg-new-terrain-btn" class="ctrl-btn">New Terrain</button>
+      </div>
+
+      <button id="pg-mute-btn" class="ctrl-btn mute-btn">🔊 Mute</button>
+
+      <div class="ctrl-hints">
+        <span class="hint-chip">← → / A D Drive</span>
+        <span class="hint-chip">↑ / W / Space Jump</span>
+        <span class="hint-chip">↓ / S Brake</span>
+        <span class="hint-chip">Q / E Mid-air Rotate</span>
+        <span class="hint-chip">Shift+F Debug</span>
+      </div>
+    </div>
+
+    <!-- Physics sandbox stage (single canvas) -->
+    <div class="sandbox-stage pg-stage" id="pg-stage">
+
+      <!-- HUD -->
+      <div class="sandbox-hud" id="pg-hud">
+        <div class="hud-cell">
+          <span class="hud-icon">🚗</span>
+          <span class="hud-val" id="pg-hud-speed">0 km/h</span>
+        </div>
+        <div class="hud-cell fuel-cell">
+          <span class="hud-icon">⛽</span>
+          <div class="hud-fuel-wrap">
+            <span class="hud-val" id="pg-hud-fuel">100%</span>
+            <div class="hud-fuel-track">
+              <div class="hud-fuel-bar" id="pg-hud-fuel-bar" style="width:100%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="hud-cell">
+          <span class="hud-icon">🪙</span>
+          <span class="hud-val" id="pg-hud-coins">0</span>
+        </div>
+        <div class="hud-cell pg-air-cell">
+          <span class="hud-val" id="pg-hud-air"></span>
+        </div>
+      </div>
+
+      <!-- Suspension indicator panel -->
+      <div class="pg-susp-panel" id="pg-susp-panel">
+        <div class="susp-row">
+          <span class="susp-label">Rear</span>
+          <div class="susp-bar-track"><div class="susp-bar" id="pg-susp-rear"></div></div>
+        </div>
+        <div class="susp-row">
+          <span class="susp-label">Front</span>
+          <div class="susp-bar-track"><div class="susp-bar" id="pg-susp-front"></div></div>
+        </div>
+      </div>
+
+      <!-- Single game canvas -->
+      <canvas id="pg-canvas" class="pg-canvas" aria-label="Physics sandbox — drive your vehicle over procedural terrain"></canvas>
+
+      <!-- Crash Overlay -->
+      <div class="crash-overlay" id="pg-crash-overlay" hidden>
+        <div class="crash-panel">
+          <div class="crash-icon">💥</div>
+          <h2 class="crash-title">Flipped!</h2>
+          <p class="crash-sub">Chassis hit the ground — you crashed!</p>
+          <button id="pg-restart-btn" class="btn-restart">🔄 Try Again</button>
+        </div>
+      </div>
+
+      <!-- Debug text (hidden by default, Shift+F to toggle) -->
+      <pre id="pg-debug" class="pg-debug" hidden></pre>
+
+    </div><!-- /.pg-stage -->
+
+    <!-- Mobile touch controls -->
+    <div class="touch-controls pg-touch-controls" id="pg-touch-controls">
+      <button id="pg-touch-rotl"  class="touch-btn" aria-label="Rotate Left">↺ Tilt</button>
+      <button id="pg-touch-brake" class="touch-btn" aria-label="Brake">⬅ Brake</button>
+      <button id="pg-touch-gas"   class="touch-btn touch-btn-gas" aria-label="Gas">Gas ➡</button>
+      <button id="pg-touch-rotr"  class="touch-btn" aria-label="Rotate Right">Tilt ↻</button>
+    </div>
+
+    <!-- Suspension legend -->
+    <div class="pg-legend">
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#00FF88"></span>
+        <span>Suspension compression (green = normal, orange = hard, red = bottomed)</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#00FFFF"></span>
+        <span>Airborne indicator</span>
+      </div>
+    </div>
+
+    <!-- Feature cards -->
+    <section class="feature-cards">
+      <div class="feat-card">
+        <div class="feat-icon">⛰️</div>
+        <h3>Procedural Terrain</h3>
+        <p>Infinite smooth hills using layered value noise (fBm). Seeded + slope-clamped for fair play.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🔩</div>
+        <h3>Spring Suspension</h3>
+        <p>Hooke's law + damping per wheel. Visual coil spring, compression indicators, tyre slip heat.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🎥</div>
+        <h3>Smart Camera</h3>
+        <p>Smooth lerp with velocity-based look-ahead. Dynamically zooms out at high speed.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">💨</div>
+        <h3>Mid-Air Control</h3>
+        <p>Q / E keys apply torque while airborne so you can balance before landing. Flip = crash!</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>SpriteForge · Physics Sandbox · Issue #31 · Procedural Terrain + Spring Suspension Physics</p>
+  </footer>
+
+  <!-- Script load order: dependencies first -->
+  <script src="/static/js/biome-parallax.js"></script>
+  <script src="/static/js/audio-engine.js"></script>
+  <script src="/static/js/terrain-engine.js"></script>
+  <script src="/static/js/physics-engine.js"></script>
+  <script src="/static/js/physics-game.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Suspension bar live update (runs independently via RAF)
+      const rearBar  = document.getElementById('pg-susp-rear');
+      const frontBar = document.getElementById('pg-susp-front');
+
+      function updateSuspBars() {
+        if (window._physicsGame) {
+          const c = window._physicsGame.chassis;
+          const rPct = Math.min(c.wheels[0].compression / c.wheels[0].restLength * 100, 100);
+          const fPct = Math.min(c.wheels[1].compression / c.wheels[1].restLength * 100, 100);
+          const col = pct => pct < 40 ? '#00FF88' : pct < 75 ? '#FF9800' : '#FF1744';
+          if (rearBar)  { rearBar.style.width  = rPct + '%'; rearBar.style.background  = col(rPct); }
+          if (frontBar) { frontBar.style.width = fPct + '%'; frontBar.style.background = col(fPct); }
+        }
+        requestAnimationFrame(updateSuspBars);
+      }
+      requestAnimationFrame(updateSuspBars);
+
+      window._physicsGame = new PhysicsGame('pg-canvas');
+    });
+  </script>
+</body>
+</html>
