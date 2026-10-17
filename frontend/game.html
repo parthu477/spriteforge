@@ -44,6 +44,14 @@
 
     <!-- Controls Bar -->
     <div class="sandbox-controls-bar">
+      <!-- Issue #44: Spawn Controls Cluster -->
+      <div class="ctrl-group spawn-controls-cluster">
+        <button id="spawn-car-btn" class="ctrl-btn btn-spawn-car" title="Spawn default vehicle">🚗 Spawn Default Car</button>
+        <button id="insert-sprite-btn" class="ctrl-btn btn-insert-sprite" title="Insert custom sprite / image">🎨 Insert Custom Image / Sprite</button>
+        <input type="file" id="sprite-file-input" accept="image/*" style="display:none">
+        <button id="clear-sandbox-btn" class="ctrl-btn btn-clear-sandbox" title="Despawn entities and clear world">🗑 Clear Sandbox</button>
+      </div>
+
       <!-- Biome selector -->
       <div class="ctrl-group">
         <label for="biome-select" class="ctrl-label">🌍 Biome</label>

@@ -94,6 +94,59 @@ body.game-page {
 .ctrl-btn:hover { background: rgba(255,255,255,0.12); }
 .ctrl-btn.muted { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.4); color: #fca5a5; }
 
+/* Issue #44: Spawn controls cluster & buttons */
+.spawn-controls-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 10px;
+  padding: 0.22rem 0.4rem;
+}
+
+.btn-spawn-car {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(6, 182, 212, 0.18));
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  font-weight: 600;
+}
+.btn-spawn-car:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(6, 182, 212, 0.32));
+  border-color: rgba(16, 185, 129, 0.8);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-insert-sprite {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(236, 72, 153, 0.18));
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #c084fc;
+  font-weight: 600;
+}
+.btn-insert-sprite:hover {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.32), rgba(236, 72, 153, 0.32));
+  border-color: rgba(139, 92, 246, 0.8);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-clear-sandbox {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  color: #f87171;
+  font-weight: 600;
+}
+.btn-clear-sandbox:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.7);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
 .ctrl-hints {
   display: flex;
   gap: 0.4rem;

@@ -91,12 +91,21 @@ class GameSandbox {
     this.goTotal       = document.getElementById('go-total');
     this.restartBtn    = document.getElementById('restart-btn');
 
+    // ── Entity State & Spawn Controls (Issue #44) ───────────────
+    this.hasVehicle     = false;
+    this.customSprite   = null;
+    this.spawnCarBtn    = document.getElementById('spawn-car-btn');
+    this.insertSpriteBtn= document.getElementById('insert-sprite-btn');
+    this.spriteFileInput= document.getElementById('sprite-file-input');
+    this.clearSandboxBtn= document.getElementById('clear-sandbox-btn');
+
     this._raf = null;
     this._lastTime = 0;
 
     this._initEvents();
     this._resize();
     this._spawnInitialCollectibles();
+    this._updateHUD();
     this._loop(0);
   }
 
@@ -105,6 +114,25 @@ class GameSandbox {
     window.addEventListener('resize', () => this._resize());
     window.addEventListener('keydown', e => { this.keys[e.code] = true;  this._onKeyDown(e); });
     window.addEventListener('keyup',   e => { this.keys[e.code] = false; });
+
+    // Issue #44: Dedicated Spawn Controls
+    this.spawnCarBtn?.addEventListener('click', () => this.spawnCar({ defaultCar: true }));
+    this.insertSpriteBtn?.addEventListener('click', () => this.spriteFileInput?.click());
+    this.spriteFileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          this.customSprite = img;
+          this.spawnCar();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    this.clearSandboxBtn?.addEventListener('click', () => this.clearSandbox());
 
     this.biomeSelect?.addEventListener('change', () => {
       this.renderer.setBiome(this.biomeSelect.value);
@@ -127,6 +155,7 @@ class GameSandbox {
     const setupPedal = (el, type) => {
       if (!el) return;
       const press = () => {
+        if (!this.hasVehicle) return;
         this._touchState[type] = 1;
         el.classList.add('pedal-pressed');
         if (type === 'gas' && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
@@ -152,6 +181,7 @@ class GameSandbox {
     // Issue #49: Dedicated [ JUMP ] on-screen touch/mouse pedal
     if (jumpPedal) {
       const triggerJump = () => {
+        if (!this.hasVehicle) return;
         jumpPedal.classList.add('pedal-pressed');
         this._jump();
       };
@@ -169,6 +199,11 @@ class GameSandbox {
   }
 
   _onKeyDown(e) {
+    if (!this.hasVehicle) {
+      if (e.code === 'KeyR') { this.spawnCar({ defaultCar: true }); return; }
+      return;
+    }
+
     // Instant restart run via 'R' key (Specification 1, Issue #33)
     if (e.code === 'KeyR') { this._restart(); return; }
 
@@ -189,6 +224,7 @@ class GameSandbox {
 
   /* ── Car Jump Action (Specification 1, Issue #49) ───────────── */
   _jump() {
+    if (!this.hasVehicle) return;
     const car = this.car;
     if (!car.onGround || car.crashed || this._gameOver) return;
 
@@ -348,6 +384,12 @@ class GameSandbox {
   /* ── Physics Update (Issue #33 full gameplay loop) ──────────── */
   _update(dt) {
     if (dt <= 0) return;
+    if (!this.hasVehicle) {
+      this.renderer.draw(this.cameraX);
+      this._drawForeground();
+      this._updateHUD();
+      return;
+    }
     const car    = this.car;
     const biome  = this.renderer.currentBiome;
     const gY     = this.H * biome.groundLine - 30;
@@ -605,7 +647,40 @@ class GameSandbox {
     this.crashOverlay.hidden = false;
   }
 
+  /* ── Explicit Spawn & Clear Controls (Issue #44) ──────────────── */
+  spawnCar(options = {}) {
+    this.hasVehicle = true;
+    if (options.defaultCar) {
+      this.customSprite = null;
+    }
+    this._restart();
+  }
+
+  clearSandbox() {
+    this.hasVehicle     = false;
+    this.customSprite   = null;
+    this.floatingPopups = [];
+    this.cameraX        = 0;
+    this.distanceMeters = 0;
+    this.stuntBonus     = 0;
+    this.totalScore     = 0;
+    this.currentAirTime = 0;
+    this.airAngleDelta  = 0;
+    this._gameOver      = false;
+    this._outOfFuel     = false;
+    this._fuelAlert     = false;
+    this._gameOverShown = false;
+    this._lowSpeedTime  = 0;
+    this.hudFuelCell?.classList.remove('fuel-warning');
+    if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
+    if (this.crashOverlay) this.crashOverlay.hidden = true;
+    this.audio.stopEngine?.();
+    this.audio.stopFuelAlert?.();
+    this._updateHUD();
+  }
+
   _restart() {
+    this.hasVehicle = true;
     const car = this.car;
     car.vx = 0; car.vy = 0;
     car.speed = 0; car.throttle = 0; car.braking = false;
@@ -710,11 +785,19 @@ class GameSandbox {
     });
 
     // Draw car
-    ctx.save();
-    ctx.translate(carSX, car.y + 28);
-    ctx.rotate(car.angle * Math.PI / 180);
-    this._drawCar(ctx, biome.id);
-    ctx.restore();
+    if (this.hasVehicle) {
+      ctx.save();
+      ctx.translate(carSX, car.y + 28);
+      ctx.rotate(car.angle * Math.PI / 180);
+      if (this.customSprite) {
+        const w = 88;
+        const h = (this.customSprite.height / this.customSprite.width) * w;
+        ctx.drawImage(this.customSprite, -w / 2, -h / 2, w, h);
+      } else {
+        this._drawCar(ctx, biome.id);
+      }
+      ctx.restore();
+    }
 
     // Crash flash
     if (car.crashed && car.crashTimer > 1.2) {
@@ -808,6 +891,19 @@ class GameSandbox {
 
   /* ── HUD Update (Issue #33: Distance, Speed, RPM, Fuel, Coins) ─ */
   _updateHUD() {
+    if (!this.hasVehicle) {
+      if (this.hudDist)   this.hudDist.textContent   = '--- m';
+      if (this.hudSpeed)  this.hudSpeed.textContent  = '--- km/h';
+      if (this.hudCoins)  this.hudCoins.textContent  = '---';
+      if (this.hudRpmBar) this.hudRpmBar.style.width = '0%';
+      if (this.hudFuel)   this.hudFuel.textContent   = '---';
+      if (this.hudFuelBar) {
+        this.hudFuelBar.style.width = '0%';
+        this.hudFuelBar.style.backgroundColor = '#64748b';
+      }
+      return;
+    }
+
     const { car } = this;
     const speed = Math.abs(Math.round(car.speed * 10));
     const rpm   = Math.min(1, Math.abs(car.vx) / (12 * 60));
