@@ -69,3 +69,9 @@ def physics_game_js():
 @ui_bp.route("/static/css/physics-game.css")
 def physics_game_css():
     return send_from_directory(str(_frontend / "css"), "physics-game.css")
+
+
+# ── Static route for Issue #47 Auth JS ───────────────────────
+@ui_bp.route("/static/js/auth.js")
+def auth_js():
+    return send_from_directory(str(_frontend / "js"), "auth.js")
