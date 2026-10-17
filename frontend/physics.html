@@ -86,6 +86,7 @@
       <div class="ctrl-hints">
         <span class="hint-chip">W / D / ↑ / → Gas / Air-Tilt</span>
         <span class="hint-chip">S / A / ↓ / ← Brake / Air-Tilt</span>
+        <span class="hint-chip">Space Jump</span>
         <span class="hint-chip">R Restart</span>
         <span class="hint-chip">Shift+F Debug</span>
       </div>
@@ -184,12 +185,17 @@
 
     </div><!-- /.pg-stage -->
 
-    <!-- Mobile / On-Screen Touch Pedals (Issue #33) -->
+    <!-- Mobile / On-Screen Touch Pedals (Issue #49) -->
     <div class="touch-controls pg-touch-pedals" id="pg-touch-controls">
       <button id="pg-touch-brake" class="touch-pedal pedal-brake" aria-label="Brake / Reverse / Air-Tilt Left">
         <span class="pedal-icon">⬅</span>
         <span class="pedal-title">BRAKE</span>
         <span class="pedal-sub">Air-Tilt ↺</span>
+      </button>
+      <button id="pg-touch-jump" class="touch-pedal pedal-jump" aria-label="Jump / Launch Vehicle">
+        <span class="pedal-icon">🚀</span>
+        <span class="pedal-title">JUMP</span>
+        <span class="pedal-sub">Launch [Space]</span>
       </button>
       <button id="pg-touch-gas" class="touch-pedal pedal-gas" aria-label="Gas / Accelerate / Air-Tilt Right">
         <span class="pedal-icon">➡</span>

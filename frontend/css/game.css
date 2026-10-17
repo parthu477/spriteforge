@@ -427,16 +427,12 @@ body.game-page {
   to   { box-shadow: 0 0 18px rgba(239,68,68,0.6); }
 }
 
-/* ── Issue #33: Dual Touch Pedals ────────────────────────────── */
+/* ── Issue #49: On-Screen Touch / Mouse Control Pedals ────────── */
 .pg-touch-pedals {
-  display: none;
+  display: flex;
   gap: 0.75rem;
   justify-content: space-between;
   margin-top: 0.75rem;
-}
-
-@media (pointer: coarse) {
-  .pg-touch-pedals { display: flex; }
 }
 
 .touch-pedal {
@@ -465,20 +461,27 @@ body.game-page {
   background: linear-gradient(160deg, rgba(239,68,68,0.12), rgba(180,30,30,0.06));
 }
 
+.pedal-jump {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: linear-gradient(160deg, rgba(59, 130, 246, 0.18), rgba(37, 99, 235, 0.08));
+}
+
 .pedal-gas {
   border-color: rgba(139,92,246,0.45);
   background: linear-gradient(160deg, rgba(139,92,246,0.18), rgba(79,70,229,0.08));
 }
 
-.touch-pedal:hover { opacity: 0.9; }
+.touch-pedal:hover { opacity: 0.95; }
+.pedal-jump:hover  { border-color: rgba(96, 165, 250, 0.65); }
 
 .touch-pedal.pedal-pressed,
 .touch-pedal:active {
   transform: scale(0.94);
 }
 
-.pedal-brake.pedal-pressed  { background: rgba(239,68,68,0.32); box-shadow: 0 0 18px rgba(239,68,68,0.4); }
-.pedal-gas.pedal-pressed    { background: rgba(139,92,246,0.35); box-shadow: 0 0 18px rgba(139,92,246,0.5); }
+.pedal-brake.pedal-pressed { background: rgba(239,68,68,0.32); box-shadow: 0 0 18px rgba(239,68,68,0.4); }
+.pedal-jump.pedal-pressed  { background: rgba(59, 130, 246, 0.35); box-shadow: 0 0 18px rgba(59, 130, 246, 0.5); border-color: #3b82f6; }
+.pedal-gas.pedal-pressed   { background: rgba(139,92,246,0.35); box-shadow: 0 0 18px rgba(139,92,246,0.5); }
 
 .pedal-icon  { font-size: 1.6rem; line-height: 1; }
 .pedal-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; }
