@@ -111,6 +111,20 @@ class ParticleSystem {
     }
   }
 
+  emitJumpDust(x, y) {
+    for (let i = 0; i < 18; i++) {
+      this.emit(x, y, {
+        vx: (Math.random() - 0.5) * 6,
+        vy: -(Math.random() * 3.5 + 1.5),
+        decay: 0.025 + Math.random() * 0.025,
+        size: Math.random() * 8 + 3,
+        color: `rgba(${210 + Math.floor(Math.random()*40)},${180 + Math.floor(Math.random()*30)},${130 + Math.floor(Math.random()*30)},0.75)`,
+        gravity: 0.08,
+        type: 'dirt',
+      });
+    }
+  }
+
   emitExhaust(x, y, speed) {
     if (Math.random() > 0.4) return;
     const intensity = Math.min(Math.abs(speed) / 10, 1);

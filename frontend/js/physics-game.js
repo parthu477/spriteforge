@@ -76,9 +76,11 @@ class PhysicsGame {
     this._crashShown     = false;
     this._fuelStopTime   = 0;
 
-    // ── Collectibles (Coins & Fuel Cans) ────────────────────────
-    this.coins    = [];
-    this.fuelCans = [];
+    // ── Collectibles (Coins & Fuel Cans, Issue #49 Endless) ────
+    this.coins           = [];
+    this.fuelCans        = [];
+    this._lastCoinSpawnX = 0;
+    this._lastFuelSpawnX = 0;
     this._spawnCollectibles();
 
     // ── Input state (Dual Control Scheme: Keyboard + Touch Pedals)
@@ -236,9 +238,10 @@ class PhysicsGame {
       this._restart();
     });
 
-    // Dual Touch Pedals (Brake/Tilt-Left & Gas/Tilt-Right)
+    // Dual Touch Pedals (Brake/Tilt-Left, Jump, & Gas/Tilt-Right — Issue #49)
     const gasPedal   = document.getElementById('pg-touch-gas');
     const brakePedal = document.getElementById('pg-touch-brake');
+    const jumpPedal  = document.getElementById('pg-touch-jump');
 
     const setupPedal = (el, type) => {
       if (!el) return;
@@ -269,6 +272,25 @@ class PhysicsGame {
     setupPedal(gasPedal, 'gas');
     setupPedal(brakePedal, 'brake');
 
+    // Dedicated [ JUMP ] on-screen pedal (Specification 1, Issue #49)
+    if (jumpPedal) {
+      const triggerJump = () => {
+        jumpPedal.classList.add('pedal-pressed');
+        this._jump();
+      };
+      const releaseJump = () => {
+        jumpPedal.classList.remove('pedal-pressed');
+      };
+
+      jumpPedal.addEventListener('pointerdown',   e => { e.preventDefault(); triggerJump(); });
+      jumpPedal.addEventListener('pointerup',     e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('pointercancel', e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('pointerleave',  e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('touchstart',  e => { e.preventDefault(); triggerJump(); }, { passive: false });
+      jumpPedal.addEventListener('touchend',    e => { e.preventDefault(); releaseJump(); }, { passive: false });
+      jumpPedal.addEventListener('touchcancel', e => { e.preventDefault(); releaseJump(); }, { passive: false });
+    }
+
     // Debug toggle
     document.addEventListener('keydown', e => {
       if (e.code === 'KeyF' && e.shiftKey) {
@@ -285,10 +307,43 @@ class PhysicsGame {
       return;
     }
 
+    // Space key: Car Jump Mechanic (Specification 1, Issue #49)
+    if (e.code === 'Space') {
+      e.preventDefault();
+      this._jump();
+      return;
+    }
+
     // Accelerate / Gas start engine audio
     const isGas = (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'ArrowUp' || e.code === 'KeyW');
     if (isGas && !this.chassis.crashed && !this._gameOver && this.chassis.fuel > 0) {
       this.audio?.startEngine();
+    }
+  }
+
+  /* ── Car Jump Action (Specification 1, Issue #49) ───────────── */
+  _jump() {
+    const c = this.chassis;
+    if (!c.onGround || c.crashed || this._gameOver) return;
+
+    // Apply immediate vertical impulse: Physics Sandbox: c.vel.y = -520 px/s; c.onGround = false;
+    c.vel.y = -520;
+    c.onGround = false;
+
+    // Retro jump / spring sound FX
+    this.audio?.playJump();
+
+    // Emit upward dust and exhaust burst particles from rear wheels
+    if (this.particles) {
+      const rearWheel = c.wheels[0];
+      const sx = (rearWheel.pos.x - this.camera.worldLeft) * this.camera.zoom;
+      const sy = (rearWheel.pos.y - this.camera.worldTop ) * this.camera.zoom;
+      if (typeof this.particles.emitJumpDust === 'function') {
+        this.particles.emitJumpDust(sx, sy);
+      } else {
+        this.particles.emitTireDirt(sx, sy, -15, true);
+      }
+      this.particles.emitExhaust(sx - 20, sy - 10, 15);
     }
   }
 
@@ -304,33 +359,96 @@ class PhysicsGame {
     this.terrain.cfg.baseY = H * 0.68;
   }
 
-  /* ── Spawn collectibles (Along hills, crests, and valleys) ───── */
+  /* ── Endless Procedural Collectibles (Issue #49) ─────────────── */
   _spawnCollectibles() {
     this.coins = [];
     this.fuelCans = [];
+    this._lastCoinSpawnX = 350;
+    this._lastFuelSpawnX = 800;
+    this._generateCollectiblesAhead(this.chassis.pos.x + 2500);
+  }
 
-    // Spawn 60 gold coins in wave clusters following terrain hills
-    for (let i = 0; i < 60; i++) {
-      const wx = 350 + i * 160 + (i % 3) * 30;
-      // Coins on crests (every 5th) give +100 bonus
-      const isCrest = (i % 5 === 0);
-      this.coins.push({
-        wx,
-        val: isCrest ? 100 : 50,
-        collected: false,
-        animT: Math.random() * Math.PI * 2,
-        isCrest,
-      });
+  _generateCollectiblesAhead(targetX) {
+    // ── Infinite Procedural Coins (Formations & Star Coins, Issue #49)
+    while (this._lastCoinSpawnX < targetX) {
+      const startX = this._lastCoinSpawnX;
+      const formationType = Math.floor(Math.random() * 3);
+
+      if (formationType === 0) {
+        // Formation 1: Rolling hill contours following terrain height curves
+        const count = 5 + Math.floor(Math.random() * 4);
+        const spacing = 50 + Math.random() * 15;
+        for (let i = 0; i < count; i++) {
+          const wx = startX + i * spacing;
+          const isCrest = (i === Math.floor(count / 2) && Math.random() > 0.4);
+          this.coins.push({
+            wx,
+            yOffset: 35,
+            val: isCrest ? 100 : 50,
+            collected: false,
+            animT: Math.random() * Math.PI * 2,
+            isCrest,
+          });
+        }
+        this._lastCoinSpawnX = startX + count * spacing + 120 + Math.random() * 100;
+      } else if (formationType === 1) {
+        // Formation 2: Jump arches (curved arc formations over crests/ramps)
+        const count = 7 + Math.floor(Math.random() * 3);
+        const archWidth = 360 + Math.random() * 100;
+        const step = archWidth / (count - 1);
+        const peakHeight = 90 + Math.random() * 30; // 90-120px above terrain
+        for (let i = 0; i < count; i++) {
+          const t = i / (count - 1);
+          const wx = startX + i * step;
+          const archY = Math.sin(t * Math.PI) * peakHeight;
+          const isApex = (i >= Math.floor(count / 2) - 1 && i <= Math.floor(count / 2) + 1);
+          this.coins.push({
+            wx,
+            yOffset: 35 + archY,
+            val: isApex ? 100 : 50,
+            collected: false,
+            animT: Math.random() * Math.PI * 2,
+            isCrest: isApex,
+          });
+        }
+        this._lastCoinSpawnX = startX + archWidth + 140 + Math.random() * 120;
+      } else {
+        // Formation 3: Bonus Star Coins (+100 pts) at high altitudes rewarding mid-air jumps
+        const count = 3 + Math.floor(Math.random() * 2);
+        const spacing = 50;
+        for (let i = 0; i < count; i++) {
+          const wx = startX + i * spacing;
+          const yOffset = 110 + Math.random() * 25; // High altitude reachable by jumping
+          this.coins.push({
+            wx,
+            yOffset,
+            val: 100,
+            collected: false,
+            animT: Math.random() * Math.PI * 2,
+            isCrest: true,
+          });
+        }
+        this._lastCoinSpawnX = startX + count * spacing + 160 + Math.random() * 140;
+      }
     }
 
-    // Spawn 15 fuel canisters spaced every ~750px along hills
-    for (let i = 0; i < 15; i++) {
-      const wx = 650 + i * 780 + Math.random() * 120;
+    // ── Extended Fuel Endurance (Procedural Canisters every 250–350 meters, Issue #49)
+    // In Physics Sandbox: 10 px = 1 meter. 250-350m = 2500 - 3500 px.
+    while (this._lastFuelSpawnX < targetX) {
       this.fuelCans.push({
-        wx,
+        wx: this._lastFuelSpawnX,
         collected: false,
       });
+      const nextIntervalPx = (250 + Math.random() * 100) * 10;
+      this._lastFuelSpawnX += nextIntervalPx;
     }
+  }
+
+  _cullCollectibles() {
+    // Zero memory leaks: automatically cull collected or off-screen items behind camera (Issue #49)
+    const cutoff = this.camera.worldLeft - 500;
+    this.coins    = this.coins.filter(c => !c.collected && c.wx >= cutoff);
+    this.fuelCans = this.fuelCans.filter(fc => !fc.collected && fc.wx >= cutoff);
   }
 
   /* ── Main Loop ───────────────────────────────────────────────── */
@@ -376,12 +494,7 @@ class PhysicsGame {
       c.throttle    = effectiveGas - brakeInput * 0.65;
       c.braking     = brakeInput > 0 && c.vel.x > 5;
       c.airRotInput = 0;
-
-      // Jump via spacebar
-      if (this.keys['Space']) {
-        c.vel.y    = -480;
-        c.onGround = false;
-      }
+      // Space jump handled on keydown via _jump() (with -520 impulse, sound, & particles)
     } else {
       // Mid-Air Controls (Specification 1):
       // A / Left / Left-Pedal apply counter-clockwise rotational torque (tilt left)
@@ -404,15 +517,15 @@ class PhysicsGame {
     const currentMeters = Math.max(0, Math.floor((c.pos.x - 200) / 10));
     this.distanceMeters = Math.max(this.distanceMeters, currentMeters);
 
-    // ── Fuel & Energy Mechanics (Specification 2) ────────────────
+    // ── Fuel & Energy Mechanics (Rebalanced for Extended Endurance, Issue #49) ──
     if (!c.crashed && !this._gameOver) {
-      // Fuel continuously drains at baseline idle rate (1.2%/s)
-      c.fuel -= dt * 1.2;
+      // Fuel continuously drains at baseline idle rate (decreased to 0.4%/s down from 1.2%/s)
+      c.fuel -= dt * 0.4;
 
-      // Increased consumption when pressing the gas pedal on ground (+3.8%/s)
+      // Increased consumption when pressing the gas pedal on ground (+2.2%/s)
       const isGassing = (this.keys['ArrowRight'] || this.keys['KeyD'] || this.keys['ArrowUp'] || this.keys['KeyW'] || this._touchState.gas);
       if (isGassing && c.onGround) {
-        c.fuel -= dt * 3.8;
+        c.fuel -= dt * 2.2;
       }
 
       // Clamp fuel between 0 and 100%
@@ -488,6 +601,9 @@ class PhysicsGame {
       this._lastAngle = c.angle;
     }
 
+    // ── Procedural Endless Generation Ahead (Issue #49) ─────────
+    this._generateCollectiblesAhead(c.pos.x + 2500);
+
     // ── Collectibles Pickup Checks ───────────────────────────────
     const carX = c.pos.x, carY = c.pos.y;
 
@@ -495,7 +611,7 @@ class PhysicsGame {
     this.coins.forEach(coin => {
       if (coin.collected) return;
       coin.animT += dt * 3;
-      const wy = this.terrain.heightAt(coin.wx) - 35 + Math.sin(coin.animT) * 8;
+      const wy = this.terrain.heightAt(coin.wx) - (coin.yOffset || 35) + Math.sin(coin.animT) * 8;
       const dx = coin.wx - carX, dy = wy - carY;
       if (Math.hypot(dx, dy) < 42) {
         coin.collected = true;
@@ -529,6 +645,9 @@ class PhysicsGame {
         }
       }
     });
+
+    // ── Cull off-screen & collected items (Issue #49) ────────────
+    this._cullCollectibles();
 
     // ── Crash Check (Flip / Roof Contact) ─────────────────────────
     if (c.crashed && !this._gameOver) {
@@ -667,7 +786,7 @@ class PhysicsGame {
     this.coins.forEach(coin => {
       if (coin.collected) return;
       const sx = coin.wx - camX;
-      const sy = this.terrain.heightAt(coin.wx) - 35 + Math.sin(coin.animT) * 8 - camY;
+      const sy = this.terrain.heightAt(coin.wx) - (coin.yOffset || 35) + Math.sin(coin.animT) * 8 - camY;
       if (sx < -40 || sx > this.canvas.width / this.camera.zoom + 40) return;
 
       ctx.save();
