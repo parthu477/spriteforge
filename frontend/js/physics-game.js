@@ -111,6 +111,10 @@ class PhysicsGame {
     this.restartBtn    = document.getElementById('pg-restart-btn');
 
     // ── Controls Bar Refs ───────────────────────────────────────
+    this.spawnCarBtn   = document.getElementById('pg-spawn-car-btn');
+    this.insertSpriteBtn = document.getElementById('pg-insert-sprite-btn');
+    this.spriteFileInput = document.getElementById('pg-sprite-file-input');
+    this.clearSandboxBtn = document.getElementById('pg-clear-sandbox-btn');
     this.biomeSelect   = document.getElementById('pg-biome-select');
     this.seedInput     = document.getElementById('pg-seed-input');
     this.newTerrainBtn = document.getElementById('pg-new-terrain-btn');
@@ -129,14 +133,15 @@ class PhysicsGame {
     this._raf          = null;
     this._lastTime     = 0;
 
-    // ── Init car position & start ───────────────────────────────
-    this.chassis.reset(200, this.terrain);
-    this.chassis.fuel  = 100;
-    this._lastAngle    = this.chassis.angle;
+    // ── Entity State (Issue #44: Clean Initial State) ───────────
+    this.hasVehicle    = false;
+    this.camera.x      = 200 - (this.camera.screenW / 2) / this.camera.zoom;
+    this.camera.y      = this.terrain.heightAt(200) - (this.camera.screenH / 2) / this.camera.zoom + (this.camera.verticalOffset) / this.camera.zoom;
 
     this._initEvents();
     this._initVehicleImporter();
     this._resize();
+    this._updateHUD();
     this._loop(0);
   }
 
@@ -150,6 +155,7 @@ class PhysicsGame {
       const selected = e.target.value;
       if (!selected) {
         this.chassis.setSprite(null);
+        if (this.hasVehicle) this.spawnCar({ defaultCar: true });
       } else {
         this.loadSpriteByName(selected);
       }
@@ -193,7 +199,7 @@ class PhysicsGame {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       this.chassis.setSprite(img, item.metadata || {});
-      this.chassis.reset(this.chassis.pos.x, this.terrain);
+      this.spawnCar();
     };
     img.src = item.image_url;
   }
@@ -212,6 +218,25 @@ class PhysicsGame {
       this.keys[e.code] = false;
       this._onKeyUp(e);
     });
+
+    // Issue #44: Dedicated Spawn Controls
+    this.spawnCarBtn?.addEventListener('click', () => this.spawnCar({ defaultCar: true }));
+    this.insertSpriteBtn?.addEventListener('click', () => this.spriteFileInput?.click());
+    this.spriteFileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          this.chassis.setSprite(img, { rows: 1, columns: 1 });
+          this.spawnCar();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    this.clearSandboxBtn?.addEventListener('click', () => this.clearSandbox());
 
     // Quick restart button click
     this.restartBtn?.addEventListener('click', () => this._restart());
@@ -235,7 +260,7 @@ class PhysicsGame {
       const seed    = Number.isFinite(seedVal) && seedVal > 0 ? seedVal : (Date.now() & 0xFFFF);
       this.terrain.reset({ seed });
       this._spawnCollectibles();
-      this._restart();
+      if (this.hasVehicle) this._restart();
     });
 
     // Dual Touch Pedals (Brake/Tilt-Left, Jump, & Gas/Tilt-Right — Issue #49)
@@ -246,6 +271,7 @@ class PhysicsGame {
     const setupPedal = (el, type) => {
       if (!el) return;
       const press = () => {
+        if (!this.hasVehicle) return;
         this._touchState[type] = 1;
         el.classList.add('pedal-pressed');
         if (type === 'gas' && !this.chassis.crashed && !this._gameOver && this.chassis.fuel > 0) {
@@ -275,6 +301,7 @@ class PhysicsGame {
     // Dedicated [ JUMP ] on-screen pedal (Specification 1, Issue #49)
     if (jumpPedal) {
       const triggerJump = () => {
+        if (!this.hasVehicle) return;
         jumpPedal.classList.add('pedal-pressed');
         this._jump();
       };
@@ -301,6 +328,13 @@ class PhysicsGame {
   }
 
   _onKeyDown(e) {
+    if (!this.hasVehicle) {
+      if (e.code === 'KeyR') {
+        this.spawnCar({ defaultCar: true });
+      }
+      return;
+    }
+
     // Instant restart run via 'R' key (Specification 1)
     if (e.code === 'KeyR') {
       this._restart();
@@ -323,6 +357,7 @@ class PhysicsGame {
 
   /* ── Car Jump Action (Specification 1, Issue #49) ───────────── */
   _jump() {
+    if (!this.hasVehicle) return;
     const c = this.chassis;
     if (!c.onGround || c.crashed || this._gameOver) return;
 
@@ -468,6 +503,7 @@ class PhysicsGame {
 
   /* ── Input mapping (Specification 1) ─────────────────────────── */
   _handleInput() {
+    if (!this.hasVehicle) return;
     const c = this.chassis;
     if (c.crashed || this._gameOver) {
       c.throttle    = 0;
@@ -507,6 +543,17 @@ class PhysicsGame {
 
   /* ── Update Game State (Specifications 2 & 3) ─────────────────── */
   _update(dt) {
+    if (!this.hasVehicle) {
+      const targetCamX = 200 - (this.camera.screenW / 2) / this.camera.zoom;
+      const targetCamY = this.terrain.heightAt(200) - (this.camera.screenH / 2) / this.camera.zoom + (this.camera.verticalOffset) / this.camera.zoom;
+      this.camera.x += (targetCamX - this.camera.x) * 0.1;
+      this.camera.y += (targetCamY - this.camera.y) * 0.1;
+      this.camera.zoom += (this.camera.baseZoom - this.camera.zoom) * 0.1;
+      this.particles?.update();
+      this._updateHUD();
+      return;
+    }
+
     const c = this.chassis;
     const biomeGravity = this.biomeId === 'moon' ? 220 : 980;
 
@@ -753,7 +800,9 @@ class PhysicsGame {
     this._drawFloatingPopups(ctx, camX, camY);
 
     // ── Vehicle Chassis & Wheels ─────────────────────────────────
-    this.chassis.draw(ctx, camX, camY, this.biomeId);
+    if (this.hasVehicle) {
+      this.chassis.draw(ctx, camX, camY, this.biomeId);
+    }
 
     ctx.restore(); // undo camera transform
 
@@ -863,6 +912,7 @@ class PhysicsGame {
   }
 
   _drawSpeedVignette(ctx, W, H) {
+    if (!this.hasVehicle) return;
     const speed = Math.abs(this.chassis.vel.x);
     const maxV  = this.chassis.maxSpeed;
     const ratio = Math.min(speed / maxV, 1);
@@ -898,6 +948,21 @@ class PhysicsGame {
 
   /* ── HUD Live Updates (Specification 4) ───────────────────────── */
   _updateHUD() {
+    if (!this.hasVehicle) {
+      if (this.hudDist)  this.hudDist.textContent  = '--- m';
+      if (this.hudSpeed) this.hudSpeed.textContent = '--- km/h';
+      if (this.hudRpm)   this.hudRpm.style.width   = '0%';
+      if (this.hudFuel)  this.hudFuel.textContent  = '---';
+      if (this.hudFuelBar) {
+        this.hudFuelBar.style.width = '0%';
+        this.hudFuelBar.style.backgroundColor = '#64748b';
+      }
+      if (this.hudCoins) this.hudCoins.textContent = '---';
+      if (this.hudScore) this.hudScore.textContent = 'Ready';
+      if (this.hudAir)   this.hudAir.textContent   = '';
+      return;
+    }
+
     const c = this.chassis;
     const spd = Math.abs(c.vel.x / 60 * 10);
 
@@ -946,8 +1011,48 @@ class PhysicsGame {
     }
   }
 
+  /* ── Explicit Spawn & Clear Controls (Issue #44) ──────────────── */
+  spawnCar(options = {}) {
+    this.hasVehicle = true;
+    if (options.defaultCar) {
+      this.chassis.setSprite(null);
+      if (this.vehicleSelect) this.vehicleSelect.value = '';
+    }
+    this._restart();
+  }
+
+  clearSandbox() {
+    this.hasVehicle = false;
+    this.chassis.setSprite(null);
+    this.floatingPopups = [];
+    this.distanceMeters = 0;
+    this.coinsCollected = 0;
+    this.stuntBonus = 0;
+    this.totalScore = 0;
+    this.currentAirTime = 0;
+    this.airAngleDelta = 0;
+    this._gameOver = false;
+    this._outOfFuel = false;
+    this._fuelAlert = false;
+    this._crashShown = false;
+    this._fuelStopTime = 0;
+    this.hudFuelCell?.classList.remove('fuel-warning');
+    if (this.hudFuelWarning) this.hudFuelWarning.hidden = true;
+    if (this.crashOverlay) this.crashOverlay.hidden = true;
+    this.audio?.stopEngine();
+    this.audio?.stopFuelAlert();
+    if (this.vehicleSelect) this.vehicleSelect.value = '';
+
+    // Reset camera to origin
+    this.camera.x = 200 - (this.camera.screenW / 2) / this.camera.zoom;
+    this.camera.y = this.terrain.heightAt(200) - (this.camera.screenH / 2) / this.camera.zoom + (this.camera.verticalOffset) / this.camera.zoom;
+    this.camera.zoom = this.camera.baseZoom;
+    this._updateHUD();
+  }
+
   /* ── Restart Run (Shortcut R or Try Again Button) ─────────────── */
   _restart() {
+    this.hasVehicle      = true;
     this.chassis.reset(200, this.terrain);
     this.chassis.fuel    = 100;
     this.distanceMeters  = 0;

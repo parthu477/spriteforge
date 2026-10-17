@@ -46,6 +46,14 @@
     <!-- Controls bar -->
     <div class="sandbox-controls-bar pg-controls-bar">
 
+      <!-- Issue #44: Spawn Controls Cluster -->
+      <div class="ctrl-group spawn-controls-cluster">
+        <button id="pg-spawn-car-btn" class="ctrl-btn btn-spawn-car" title="Spawn default vehicle at origin">🚗 Spawn Default Car</button>
+        <button id="pg-insert-sprite-btn" class="ctrl-btn btn-insert-sprite" title="Insert custom sprite / image">🎨 Insert Custom Image / Sprite</button>
+        <input type="file" id="pg-sprite-file-input" accept="image/*" style="display:none">
+        <button id="pg-clear-sandbox-btn" class="ctrl-btn btn-clear-sandbox" title="Despawn entities and clear world">🗑 Clear Sandbox</button>
+      </div>
+
       <div class="ctrl-group">
         <label for="pg-biome-select" class="ctrl-label">🌍 Biome</label>
         <select id="pg-biome-select" class="ctrl-select">
@@ -259,13 +267,16 @@
       const frontBar = document.getElementById('pg-susp-front');
 
       function updateSuspBars() {
-        if (window._physicsGame) {
+        if (window._physicsGame && window._physicsGame.hasVehicle && window._physicsGame.chassis) {
           const c = window._physicsGame.chassis;
           const rPct = Math.min(c.wheels[0].compression / c.wheels[0].restLength * 100, 100);
           const fPct = Math.min(c.wheels[1].compression / c.wheels[1].restLength * 100, 100);
           const col = pct => pct < 40 ? '#00FF88' : pct < 75 ? '#FF9800' : '#FF1744';
           if (rearBar)  { rearBar.style.width  = rPct + '%'; rearBar.style.background  = col(rPct); }
           if (frontBar) { frontBar.style.width = fPct + '%'; frontBar.style.background = col(fPct); }
+        } else {
+          if (rearBar)  { rearBar.style.width  = '0%'; }
+          if (frontBar) { frontBar.style.width = '0%'; }
         }
         requestAnimationFrame(updateSuspBars);
       }
