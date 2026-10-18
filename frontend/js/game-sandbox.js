@@ -52,9 +52,11 @@ class GameSandbox {
     this._gameOverShown  = false;
     this._lowSpeedTime   = 0;
 
-    // ── Game objects ────────────────────────────────────────────
+    // ── Collectibles state (Issue #49: Endless Procedural Spawning)
     this.coins    = [];
     this.fuelCans = [];
+    this._lastCoinSpawnX = 0;
+    this._lastFuelSpawnX = 0;
 
     // ── Camera ──────────────────────────────────────────────────
     this.cameraX = 0;
@@ -95,6 +97,14 @@ class GameSandbox {
     this.worldSprites        = []; // Sprites placed in world coordinates & parallax layers
     this.customVehicleSprite = null; // Sprite texture skin for active vehicle
 
+    // ── Entity State & Spawn Controls (Issue #44) ───────────────
+    this.hasVehicle     = false;
+    this.customSprite   = null;
+    this.spawnCarBtn    = document.getElementById('spawn-car-btn');
+    this.insertSpriteBtn= document.getElementById('insert-sprite-btn');
+    this.spriteFileInput= document.getElementById('sprite-file-input');
+    this.clearSandboxBtn= document.getElementById('clear-sandbox-btn');
+
     this._raf = null;
     this._lastTime = 0;
 
@@ -102,8 +112,8 @@ class GameSandbox {
     this._initAssetShelf();
     this._initAssetBus();
     this._resize();
-    this._spawnCoins();
-    this._spawnFuelCans();
+    this._spawnInitialCollectibles();
+    this._updateHUD();
     this._loop(0);
   }
 
@@ -112,6 +122,25 @@ class GameSandbox {
     window.addEventListener('resize', () => this._resize());
     window.addEventListener('keydown', e => { this.keys[e.code] = true;  this._onKeyDown(e); });
     window.addEventListener('keyup',   e => { this.keys[e.code] = false; });
+
+    // Issue #44: Dedicated Spawn Controls
+    this.spawnCarBtn?.addEventListener('click', () => this.spawnCar({ defaultCar: true }));
+    this.insertSpriteBtn?.addEventListener('click', () => this.spriteFileInput?.click());
+    this.spriteFileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          this.customSprite = img;
+          this.spawnCar();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    this.clearSandboxBtn?.addEventListener('click', () => this.clearSandbox());
 
     this.biomeSelect?.addEventListener('change', () => {
       this.renderer.setBiome(this.biomeSelect.value);
@@ -126,13 +155,15 @@ class GameSandbox {
 
     this.restartBtn?.addEventListener('click', () => this._restart());
 
-    // On-Screen Touch Pedals with pointer events (zero latency, Issue #33)
+    // On-Screen Touch Pedals with pointer events (zero latency, Issue #33 & Issue #49)
     const gasPedal   = document.getElementById('touch-gas');
     const brakePedal = document.getElementById('touch-brake');
+    const jumpPedal  = document.getElementById('touch-jump');
 
     const setupPedal = (el, type) => {
       if (!el) return;
       const press = () => {
+        if (!this.hasVehicle) return;
         this._touchState[type] = 1;
         el.classList.add('pedal-pressed');
         if (type === 'gas' && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
@@ -154,17 +185,76 @@ class GameSandbox {
 
     setupPedal(gasPedal,   'gas');
     setupPedal(brakePedal, 'brake');
+
+    // Issue #49: Dedicated [ JUMP ] on-screen touch/mouse pedal
+    if (jumpPedal) {
+      const triggerJump = () => {
+        if (!this.hasVehicle) return;
+        jumpPedal.classList.add('pedal-pressed');
+        this._jump();
+      };
+      const releaseJump = () => {
+        jumpPedal.classList.remove('pedal-pressed');
+      };
+      jumpPedal.addEventListener('pointerdown',   e => { e.preventDefault(); triggerJump(); });
+      jumpPedal.addEventListener('pointerup',     e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('pointercancel', e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('pointerleave',  e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('touchstart',  e => { e.preventDefault(); triggerJump(); }, { passive: false });
+      jumpPedal.addEventListener('touchend',    e => { e.preventDefault(); releaseJump(); }, { passive: false });
+      jumpPedal.addEventListener('touchcancel', e => { e.preventDefault(); releaseJump(); }, { passive: false });
+    }
   }
 
   _onKeyDown(e) {
+    if (!this.hasVehicle) {
+      if (e.code === 'KeyR') { this.spawnCar({ defaultCar: true }); return; }
+      return;
+    }
+
     // Instant restart run via 'R' key (Specification 1, Issue #33)
     if (e.code === 'KeyR') { this._restart(); return; }
+
+    // Space key: Car Jump Mechanic (Specification 1, Issue #49)
+    if (e.code === 'Space') {
+      e.preventDefault();
+      this._jump();
+      return;
+    }
 
     // Gas keys — start engine audio (zero latency)
     const isGas = (e.code === 'ArrowRight' || e.code === 'KeyD' ||
                    e.code === 'ArrowUp'    || e.code === 'KeyW');
     if (isGas && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
       this.audio.startEngine();
+    }
+  }
+
+  /* ── Car Jump Action (Specification 1, Issue #49) ───────────── */
+  _jump() {
+    if (!this.hasVehicle) return;
+    const car = this.car;
+    if (!car.onGround || car.crashed || this._gameOver) return;
+
+    // Apply immediate vertical impulse: car.vy = -380 px/s; car.onGround = false;
+    car.vy = -380;
+    car.onGround = false;
+
+    // Retro jump / spring sound FX
+    this.audio?.playJump?.();
+
+    // Emit upward dust and exhaust burst particles from rear wheels
+    const screenCarX = this.W * 0.35;
+    const wheelY     = car.y + 32;
+    const particles  = this.renderer?.particles;
+    if (particles) {
+      if (typeof particles.emitJumpDust === 'function') {
+        particles.emitJumpDust(screenCarX - 26, wheelY);
+        particles.emitJumpDust(screenCarX + 26, wheelY);
+      } else {
+        particles.emitTireDirt(screenCarX - 26, wheelY, -15, true);
+      }
+      particles.emitExhaust(screenCarX - 44, car.y + 8, 14);
     }
   }
 
@@ -186,33 +276,108 @@ class GameSandbox {
     this.car.y = this.groundY;
   }
 
-  /* ── Spawn Collectibles (Issue #33) ─────────────────────────── */
-  _spawnCoins() {
+  /* ── Endless Procedural Collectibles (Issue #49) ─────────────── */
+  _spawnInitialCollectibles() {
     this.coins = [];
-    // Coins along hill crests (+100) and ramps/valleys (+50) (Issue #33)
-    for (let i = 0; i < 20; i++) {
-      const isCrest = (i % 4 === 0);
-      this.coins.push({
-        wx: 300 + i * 320 + Math.random() * 100,
-        wy: 0,
-        r: 14,
-        collected: false,
-        animT: Math.random() * Math.PI * 2,
-        value: isCrest ? 100 : 50,
-      });
-    }
+    this.fuelCans = [];
+    this._lastCoinSpawnX = 300;
+    this._lastFuelSpawnX = 600;
+    this._generateCollectiblesAhead(this.cameraX + (this.W || 800) + 1600);
   }
 
-  _spawnFuelCans() {
-    this.fuelCans = [];
-    // Red fuel canisters along hills (Issue #33)
-    for (let i = 0; i < 8; i++) {
+  _generateCollectiblesAhead(targetX) {
+    const gY = this.groundY || (this.H * this.renderer.currentBiome.groundLine - 30);
+
+    // ── Infinite Procedural Coins (Formations & Star Coins, Issue #49)
+    while (this._lastCoinSpawnX < targetX) {
+      const startX = this._lastCoinSpawnX;
+      const formationType = Math.floor(Math.random() * 3);
+
+      if (formationType === 0) {
+        // Formation 1: Rolling hill contours following ground wave curve
+        const count = 5 + Math.floor(Math.random() * 4);
+        const spacing = 55 + Math.random() * 15;
+        const waveFreq = 0.01 + Math.random() * 0.008;
+        for (let i = 0; i < count; i++) {
+          const wx = startX + i * spacing;
+          const yOffset = 35 + Math.sin(wx * waveFreq) * 22;
+          const isStar = (i === Math.floor(count / 2) && Math.random() > 0.4);
+          this.coins.push({
+            wx,
+            yOffset,
+            wy: gY - yOffset,
+            r: 14,
+            collected: false,
+            animT: Math.random() * Math.PI * 2,
+            value: isStar ? 100 : 50,
+            isStar,
+          });
+        }
+        this._lastCoinSpawnX = startX + count * spacing + 120 + Math.random() * 120;
+      } else if (formationType === 1) {
+        // Formation 2: Jump arches (curved arc formations over ramps/crests)
+        const count = 7 + Math.floor(Math.random() * 3);
+        const archWidth = 380 + Math.random() * 100;
+        const step = archWidth / (count - 1);
+        const peakHeight = 100 + Math.random() * 25; // 100-125px high above ground
+        for (let i = 0; i < count; i++) {
+          const t = i / (count - 1);
+          const wx = startX + i * step;
+          const archY = Math.sin(t * Math.PI) * peakHeight;
+          const yOffset = 30 + archY;
+          const isApex = (i >= Math.floor(count / 2) - 1 && i <= Math.floor(count / 2) + 1);
+          this.coins.push({
+            wx,
+            yOffset,
+            wy: gY - yOffset,
+            r: 14,
+            collected: false,
+            animT: Math.random() * Math.PI * 2,
+            value: isApex ? 100 : 50,
+            isStar: isApex,
+          });
+        }
+        this._lastCoinSpawnX = startX + archWidth + 140 + Math.random() * 120;
+      } else {
+        // Formation 3: Bonus Star Coins (+100 pts) at high altitudes rewarding mid-air jumps
+        const count = 3 + Math.floor(Math.random() * 2);
+        const spacing = 55;
+        for (let i = 0; i < count; i++) {
+          const wx = startX + i * spacing;
+          const yOffset = 115 + Math.random() * 20; // High altitude reachable by jumping
+          this.coins.push({
+            wx,
+            yOffset,
+            wy: gY - yOffset,
+            r: 15,
+            collected: false,
+            animT: Math.random() * Math.PI * 2,
+            value: 100,
+            isStar: true,
+          });
+        }
+        this._lastCoinSpawnX = startX + count * spacing + 160 + Math.random() * 140;
+      }
+    }
+
+    // ── Extended Fuel Endurance (Procedural Canisters every 250–350 meters, Issue #49)
+    // In Biome Sandbox: 60 px = 1 meter. 250-350m = 15,000 - 21,000 px.
+    while (this._lastFuelSpawnX < targetX) {
       this.fuelCans.push({
-        wx: 800 + i * 900 + Math.random() * 200,
+        wx: this._lastFuelSpawnX,
         r: 18,
         collected: false,
       });
+      const nextIntervalPx = (250 + Math.random() * 100) * 60;
+      this._lastFuelSpawnX += nextIntervalPx;
     }
+  }
+
+  _cullCollectibles() {
+    // Zero memory leaks: automatically cull collected or off-screen items behind camera (Issue #49)
+    const cutoff = this.cameraX - 500;
+    this.coins    = this.coins.filter(c => !c.collected && c.wx >= cutoff);
+    this.fuelCans = this.fuelCans.filter(fc => !fc.collected && fc.wx >= cutoff);
   }
 
   /* ── Main Loop ───────────────────────────────────────────────── */
@@ -227,6 +392,12 @@ class GameSandbox {
   /* ── Physics Update (Issue #33 full gameplay loop) ──────────── */
   _update(dt) {
     if (dt <= 0) return;
+    if (!this.hasVehicle) {
+      this.renderer.draw(this.cameraX);
+      this._drawForeground();
+      this._updateHUD();
+      return;
+    }
     const car    = this.car;
     const biome  = this.renderer.currentBiome;
     const gY     = this.H * biome.groundLine - 30;
@@ -340,11 +511,11 @@ class GameSandbox {
       this._lastAngle      = car.angle;
     }
 
-    // ── Fuel Consumption (Issue #33) ────────────────────────────
-    // Baseline idle drain ~1.2%/s + throttle drain +3.8%/s
+    // ── Fuel Consumption (Rebalanced for Extended Endurance, Issue #49) ──
+    // Baseline idle drain decreased to 0.4%/s (down from 1.2%/s)
     if (car.fuel > 0) {
-      let drain = 1.2 * dt;
-      if (car.throttle > 0) drain += 3.8 * dt;
+      let drain = 0.4 * dt;
+      if (car.throttle > 0) drain += 2.4 * dt;
       car.fuel = Math.max(0, car.fuel - drain);
     }
 
@@ -386,11 +557,14 @@ class GameSandbox {
       particles.emitExhaust(screenCarX - 44, car.y + 8, car.speed);
     }
 
-    // ── Coin collection (Issue #33) ─────────────────────────────
+    // ── Procedural Endless Generation Ahead (Issue #49) ─────────
+    this._generateCollectiblesAhead(this.cameraX + this.W + 1600);
+
+    // ── Coin collection (Issue #33 & Issue #49) ─────────────────
     this.coins.forEach(coin => {
       if (coin.collected) return;
       coin.animT += dt * 3;
-      coin.wy = gY - 40 + Math.sin(coin.animT) * 8;
+      coin.wy = gY - (coin.yOffset || 40) + Math.sin(coin.animT) * 8;
       const coinSX = coin.wx - this.cameraX + screenCarX;
       const dx = coinSX - screenCarX;
       const dy = coin.wy - car.y;
@@ -423,6 +597,9 @@ class GameSandbox {
         this._spawnPopup('⛽ FULL!', fcSX, gY - 50);
       }
     });
+
+    // ── Cull off-screen & collected items (Issue #49) ────────────
+    this._cullCollectibles();
 
     // ── Floating popup lifetime ──────────────────────────────────
     this.floatingPopups = this.floatingPopups.filter(p => p.alpha > 0);
@@ -478,7 +655,40 @@ class GameSandbox {
     this.crashOverlay.hidden = false;
   }
 
+  /* ── Explicit Spawn & Clear Controls (Issue #44) ──────────────── */
+  spawnCar(options = {}) {
+    this.hasVehicle = true;
+    if (options.defaultCar) {
+      this.customSprite = null;
+    }
+    this._restart();
+  }
+
+  clearSandbox() {
+    this.hasVehicle     = false;
+    this.customSprite   = null;
+    this.floatingPopups = [];
+    this.cameraX        = 0;
+    this.distanceMeters = 0;
+    this.stuntBonus     = 0;
+    this.totalScore     = 0;
+    this.currentAirTime = 0;
+    this.airAngleDelta  = 0;
+    this._gameOver      = false;
+    this._outOfFuel     = false;
+    this._fuelAlert     = false;
+    this._gameOverShown = false;
+    this._lowSpeedTime  = 0;
+    this.hudFuelCell?.classList.remove('fuel-warning');
+    if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
+    if (this.crashOverlay) this.crashOverlay.hidden = true;
+    this.audio.stopEngine?.();
+    this.audio.stopFuelAlert?.();
+    this._updateHUD();
+  }
+
   _restart() {
+    this.hasVehicle = true;
     const car = this.car;
     car.vx = 0; car.vy = 0;
     car.speed = 0; car.throttle = 0; car.braking = false;
@@ -500,8 +710,7 @@ class GameSandbox {
     if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
     if (this.crashOverlay) this.crashOverlay.hidden = true;
     this.audio.stopFuelAlert?.();
-    this._spawnCoins();
-    this._spawnFuelCans();
+    this._spawnInitialCollectibles();
     this._setCarGroundY();
   }
 
@@ -524,27 +733,34 @@ class GameSandbox {
     this._drawWorldSprites(ctx, 'background', biome, gY, carSX);
     this._drawWorldSprites(ctx, 'midground',  biome, gY, carSX);
 
-    // Draw uncollected coins — star icon for high-value crests (Issue #33)
+    // Draw uncollected coins — star icon for high-value crests and jump bonus (Issue #33 & #49)
     this.coins.forEach(coin => {
       if (coin.collected) return;
       const cx = coin.wx - this.cameraX + carSX;
       if (cx < -30 || cx > W + 30) return;
       ctx.save();
-      ctx.shadowColor = '#FFD700';
-      ctx.shadowBlur  = 14;
+      const isStar = (coin.value === 100 || coin.isStar);
+      ctx.shadowColor = isStar ? '#FF4081' : '#FFD700';
+      ctx.shadowBlur  = isStar ? 18 : 12;
       const cg = ctx.createRadialGradient(cx - 3, coin.wy - 3, 1, cx, coin.wy, coin.r);
-      cg.addColorStop(0, '#FFF9C4');
-      cg.addColorStop(0.5, '#FFD700');
-      cg.addColorStop(1, '#F57F17');
+      if (isStar) {
+        cg.addColorStop(0, '#FFE4E1');
+        cg.addColorStop(0.5, '#FF4081');
+        cg.addColorStop(1, '#C2185B');
+      } else {
+        cg.addColorStop(0, '#FFF9C4');
+        cg.addColorStop(0.5, '#FFD700');
+        cg.addColorStop(1, '#F57F17');
+      }
       ctx.fillStyle = cg;
       ctx.beginPath();
       ctx.arc(cx, coin.wy, coin.r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#8B6914';
-      ctx.font = 'bold 10px Space Mono, monospace';
+      ctx.fillStyle = isStar ? '#FFFFFF' : '#8B6914';
+      ctx.font = 'bold 11px Space Mono, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(coin.value === 100 ? '★' : '$', cx, coin.wy);
+      ctx.fillText(isStar ? '★' : '$', cx, coin.wy);
       ctx.restore();
     });
 
@@ -584,11 +800,19 @@ class GameSandbox {
     this._drawWorldSprites(ctx, 'ground', biome, gY, carSX);
 
     // Draw car
-    ctx.save();
-    ctx.translate(carSX, car.y + 28);
-    ctx.rotate(car.angle * Math.PI / 180);
-    this._drawCar(ctx, biome.id);
-    ctx.restore();
+    if (this.hasVehicle) {
+      ctx.save();
+      ctx.translate(carSX, car.y + 28);
+      ctx.rotate(car.angle * Math.PI / 180);
+      if (this.customSprite) {
+        const w = 88;
+        const h = (this.customSprite.height / this.customSprite.width) * w;
+        ctx.drawImage(this.customSprite, -w / 2, -h / 2, w, h);
+      } else {
+        this._drawCar(ctx, biome.id);
+      }
+      ctx.restore();
+    }
 
     // ── Foreground Overlay Placed World Sprites (In front of Car) ─
     this._drawWorldSprites(ctx, 'overlay', biome, gY, carSX);
@@ -719,6 +943,19 @@ class GameSandbox {
 
   /* ── HUD Update (Issue #33: Distance, Speed, RPM, Fuel, Coins) ─ */
   _updateHUD() {
+    if (!this.hasVehicle) {
+      if (this.hudDist)   this.hudDist.textContent   = '--- m';
+      if (this.hudSpeed)  this.hudSpeed.textContent  = '--- km/h';
+      if (this.hudCoins)  this.hudCoins.textContent  = '---';
+      if (this.hudRpmBar) this.hudRpmBar.style.width = '0%';
+      if (this.hudFuel)   this.hudFuel.textContent   = '---';
+      if (this.hudFuelBar) {
+        this.hudFuelBar.style.width = '0%';
+        this.hudFuelBar.style.backgroundColor = '#64748b';
+      }
+      return;
+    }
+
     const { car } = this;
     const speed = Math.abs(Math.round(car.speed * 10));
     const rpm   = Math.min(1, Math.abs(car.vx) / (12 * 60));
@@ -1051,6 +1288,8 @@ class GameSandbox {
       const fw = meta.frame_width || img.naturalWidth || 128;
       const fh = meta.frame_height || img.naturalHeight || 128;
 
+      this.hasVehicle = true;
+      this.customSprite = img;
       this.customVehicleSprite = {
         img,
         name: asset.name,

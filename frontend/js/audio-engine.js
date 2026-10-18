@@ -272,6 +272,37 @@ class RetroAudioEngine {
     spark.connect(sparkGain); sparkGain.connect(this._master);
     spark.start(now); spark.stop(now + 0.28);
   }
+
+  /* ── Retro Jump / Spring Sound (Issue #49) ─────────────────── */
+  playJump() {
+    this._init(); this._resume();
+    if (this._muted) return;
+    const ctx = this._ctx, now = ctx.currentTime;
+
+    // Upward pitch sweep (classic retro jump/spring boing)
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(640, now + 0.16);
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(320, now);
+    filter.frequency.exponentialRampToValueAtTime(1200, now + 0.16);
+    filter.Q.value = 3.5;
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this._master);
+
+    osc.start(now);
+    osc.stop(now + 0.24);
+  }
 }
 
 // ── Export ────────────────────────────────────────────────────

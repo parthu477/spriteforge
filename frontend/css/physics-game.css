@@ -198,10 +198,10 @@ body.physics-page { background: #080810; }
   opacity: 0.85;
 }
 
-/* ── Touch Pedals (Issue #33) ────────────────────────────────── */
+/* ── Touch Pedals (Issue #49) ────────────────────────────────── */
 .pg-touch-pedals {
   display: flex;
-  gap: 1.5rem;
+  gap: 1rem;
   justify-content: space-between;
   margin-top: 1rem;
 }
@@ -237,9 +237,24 @@ body.physics-page { background: #080810; }
   transform: translateY(4px) scale(0.97);
 }
 
+.pedal-jump {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.pedal-jump:hover {
+  border-color: rgba(96, 165, 250, 0.65);
+}
+
+.pedal-jump:active, .pedal-jump.pedal-pressed {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.35) 0%, rgba(15, 25, 45, 0.95) 100%);
+  border-color: #3b82f6;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.45), inset 0 2px 6px rgba(0, 0, 0, 0.6);
+  transform: translateY(4px) scale(0.97);
+}
+
 .pedal-gas {
   border-color: rgba(16, 185, 129, 0.4);
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .pedal-gas:active, .pedal-gas.pedal-pressed {

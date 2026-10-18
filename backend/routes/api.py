@@ -509,3 +509,78 @@ def health():
         "asset_dir_writable": writable,
         "queue_depth": _job_store.queued_count() if _job_store else 0,
     }), 200
+
+
+# ── Issue #47: Authentication Routes (Session-based) ──────────
+
+_users_store: dict = {
+    "demo": "demo123",
+}
+
+
+@api_bp.route("/auth/me", methods=["GET"])
+def auth_me():
+    from flask import session
+    user = session.get("user")
+    return jsonify({
+        "authenticated": bool(user),
+        "user": user,
+    }), 200
+
+
+@api_bp.route("/auth/login", methods=["POST"])
+def auth_login():
+    from flask import session
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+
+    if not username:
+        return jsonify({"error": "validation_error", "message": "Username is required."}), 400
+    if not password:
+        return jsonify({"error": "validation_error", "message": "Password is required."}), 400
+
+    if username in _users_store and _users_store[username] != password:
+        return jsonify({"error": "invalid_credentials", "message": "Incorrect password for username."}), 401
+
+    # Record user credentials
+    _users_store[username] = password
+    user_payload = {"username": username, "logged_in_at": datetime.datetime.utcnow().isoformat()}
+    session["user"] = user_payload
+
+    return jsonify({
+        "status": "ok",
+        "message": f"Welcome back, {username}!",
+        "user": user_payload,
+    }), 200
+
+
+@api_bp.route("/auth/register", methods=["POST"])
+def auth_register():
+    from flask import session
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+
+    if len(username) < 3:
+        return jsonify({"error": "validation_error", "message": "Username must be at least 3 characters."}), 400
+    if len(password) < 6:
+        return jsonify({"error": "validation_error", "message": "Password must be at least 6 characters."}), 400
+
+    _users_store[username] = password
+    user_payload = {"username": username, "registered_at": datetime.datetime.utcnow().isoformat()}
+    session["user"] = user_payload
+
+    return jsonify({
+        "status": "ok",
+        "message": f"Account created! Welcome, {username}!",
+        "user": user_payload,
+    }), 200
+
+
+@api_bp.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    from flask import session
+    session.pop("user", None)
+    return jsonify({"status": "ok", "message": "Logged out successfully."}), 200
+

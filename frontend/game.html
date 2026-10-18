@@ -44,6 +44,14 @@
 
     <!-- Controls Bar -->
     <div class="sandbox-controls-bar">
+      <!-- Issue #44: Spawn Controls Cluster -->
+      <div class="ctrl-group spawn-controls-cluster">
+        <button id="spawn-car-btn" class="ctrl-btn btn-spawn-car" title="Spawn default vehicle">🚗 Spawn Default Car</button>
+        <button id="insert-sprite-btn" class="ctrl-btn btn-insert-sprite" title="Insert custom sprite / image">🎨 Insert Custom Image / Sprite</button>
+        <input type="file" id="sprite-file-input" accept="image/*" style="display:none">
+        <button id="clear-sandbox-btn" class="ctrl-btn btn-clear-sandbox" title="Despawn entities and clear world">🗑 Clear Sandbox</button>
+      </div>
+
       <!-- Biome selector -->
       <div class="ctrl-group">
         <label for="biome-select" class="ctrl-label">🌍 Biome</label>
@@ -71,6 +79,7 @@
       <div class="ctrl-hints">
         <span class="hint-chip">W / D / ↑ / → Gas / Air-Tilt</span>
         <span class="hint-chip">S / A / ↓ / ← Brake / Air-Tilt</span>
+        <span class="hint-chip">Space Jump</span>
         <span class="hint-chip">R Restart</span>
       </div>
     </div>
@@ -186,12 +195,17 @@
 
     </div><!-- /.sandbox-stage -->
 
-    <!-- Mobile Touch Pedals -->
+    <!-- Mobile / On-Screen Touch Pedals (Issue #49) -->
     <div class="touch-controls pg-touch-pedals" id="touch-controls">
       <button id="touch-brake" class="touch-pedal pedal-brake" aria-label="Brake / Air-Tilt Left">
         <span class="pedal-icon">⬅</span>
         <span class="pedal-title">BRAKE</span>
         <span class="pedal-sub">Air-Tilt ↺</span>
+      </button>
+      <button id="touch-jump" class="touch-pedal pedal-jump" aria-label="Jump / Launch Vehicle">
+        <span class="pedal-icon">🚀</span>
+        <span class="pedal-title">JUMP</span>
+        <span class="pedal-sub">Launch [Space]</span>
       </button>
       <button id="touch-gas"   class="touch-pedal pedal-gas" aria-label="Gas / Air-Tilt Right">
         <span class="pedal-icon">➡</span>
