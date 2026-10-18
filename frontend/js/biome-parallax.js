@@ -243,8 +243,16 @@ class BiomeParallaxRenderer {
     }));
   }
 
-  setBiome(id) { if (BIOMES[id]) this.currentBiome = BIOMES[id]; }
-  resize(w, h) { this.width = w; this.height = h; this.canvas.width = w; this.canvas.height = h; }
+  resize(w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    this.width = w;
+    this.height = h;
+    this.canvas.width = Math.floor(w * dpr);
+    this.canvas.height = Math.floor(h * dpr);
+    this.canvas.style.width = w + 'px';
+    this.canvas.style.height = h + 'px';
+    this.ctx.scale(dpr, dpr);
+  }
 
   draw(cameraX) {
     this._frameCount++;

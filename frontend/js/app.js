@@ -49,6 +49,10 @@ const multiActionToggle = document.getElementById('multi-action-toggle');
 const modeToggleCard = document.getElementById('mode-toggle-card');
 const modeBadge = document.getElementById('mode-badge');
 const stateMachinePreview = document.getElementById('state-machine-preview');
+const stagePlaceholder = document.getElementById('stage-placeholder');
+const toggleGalleryBtn = document.getElementById('toggle-gallery-btn');
+const closeGalleryBtn = document.getElementById('close-gallery-btn');
+const galleryDock = document.getElementById('gallery-dock');
 
 // ── Char counter ──────────────────────────────────────────────
 promptInput.addEventListener('input', () => {
@@ -703,6 +707,7 @@ function setGenerating(on) {
 
 function showResult() {
   resultSection.hidden = false;
+  if (stagePlaceholder) stagePlaceholder.hidden = true;
   resultCard.hidden = true;
   statusSpinner.style.display = '';
   statusText.textContent = 'Submitting…';
@@ -719,7 +724,10 @@ function showResult() {
   resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function hideResult() { resultSection.hidden = true; }
+function hideResult() {
+  resultSection.hidden = true;
+  if (stagePlaceholder) stagePlaceholder.hidden = false;
+}
 
 function showError(msg) {
   formError.textContent = msg;
@@ -766,6 +774,7 @@ async function loadGallery() {
 
         // Reveal result section & card
         resultSection.hidden = false;
+        if (stagePlaceholder) stagePlaceholder.hidden = true;
         resultCard.hidden = false;
         closeExportMenu();
         const testDriveBtn = document.getElementById('test-drive-btn');
@@ -933,6 +942,17 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+toggleGalleryBtn?.addEventListener('click', () => {
+  galleryDock?.classList.toggle('drawer-open');
+});
+
+closeGalleryBtn?.addEventListener('click', () => {
+  galleryDock?.classList.remove('drawer-open');
+});
+
 // ── Init ──────────────────────────────────────────────────────
+if (stagePlaceholder && resultSection) {
+  stagePlaceholder.hidden = !resultSection.hidden;
+}
 loadGallery();
 

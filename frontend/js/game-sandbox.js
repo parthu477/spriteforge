@@ -252,20 +252,42 @@ class GameSandbox {
 
   /* ── Resize ─────────────────────────────────────────────────── */
   _resize() {
-    const W = this.container.clientWidth;
-    const H = Math.min(this.container.clientHeight || 480, 520);
-    this.W = W; this.H = H;
-    this.bgCanvas.width  = W; this.bgCanvas.height = H;
-    this.fgCanvas.width  = W; this.fgCanvas.height = H;
+    const rect = this.container.getBoundingClientRect();
+    const W = Math.floor(rect.width || window.innerWidth);
+    const H = Math.floor(rect.height || window.innerHeight);
+    const dpr = window.devicePixelRatio || 1;
+    this.W = W;
+    this.H = H;
+
+    this.fgCanvas.width = Math.floor(W * dpr);
+    this.fgCanvas.height = Math.floor(H * dpr);
+    this.fgCanvas.style.width = W + 'px';
+    this.fgCanvas.style.height = H + 'px';
+    this.ctx.scale(dpr, dpr);
+
     this.renderer.resize(W, H);
     this._setCarGroundY();
+
+    const bar = document.querySelector('.sandbox-controls-bar');
+    const hud = document.getElementById('sandbox-hud');
+    if (bar && hud) {
+      hud.style.top = (bar.offsetTop + bar.offsetHeight + 10) + 'px';
+    }
   }
 
   _setCarGroundY() {
     const biome = this.renderer.currentBiome;
     this.groundY = this.H * biome.groundLine - 30; // 30 = half car height
-    if (!this.car.onGround) return;
-    this.car.y = this.groundY;
+    if (this.car.onGround) {
+      this.car.y = this.groundY;
+    }
+    if (this.coins) {
+      this.coins.forEach(c => {
+        if (c.yOffset !== undefined) {
+          c.wy = this.groundY - c.yOffset;
+        }
+      });
+    }
   }
 
   /* ── Endless Procedural Collectibles (Issue #49) ─────────────── */

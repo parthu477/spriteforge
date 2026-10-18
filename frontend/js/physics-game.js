@@ -386,12 +386,29 @@ class PhysicsGame {
 
   /* ── Resize ──────────────────────────────────────────────────── */
   _resize() {
-    const W = this.canvas.parentElement?.clientWidth || 800;
-    const H = Math.min(window.innerHeight * 0.58, 520);
-    this.canvas.width  = W;
-    this.canvas.height = H;
+    const rect = this.canvas.parentElement?.getBoundingClientRect();
+    const W = Math.floor(rect?.width || window.innerWidth);
+    const H = Math.floor(rect?.height || window.innerHeight);
+    const dpr = window.devicePixelRatio || 1;
+
+    this.width = W;
+    this.height = H;
+
+    this.canvas.width  = Math.floor(W * dpr);
+    this.canvas.height = Math.floor(H * dpr);
+    this.canvas.style.width = W + 'px';
+    this.canvas.style.height = H + 'px';
+
+    this.ctx.scale(dpr, dpr);
+
     this.camera.resize(W, H);
     this.terrain.cfg.baseY = H * 0.68;
+
+    const bar = document.querySelector('.pg-controls-bar');
+    const hud = document.getElementById('pg-hud');
+    if (bar && hud) {
+      hud.style.top = (bar.offsetTop + bar.offsetHeight + 10) + 'px';
+    }
   }
 
   /* ── Endless Procedural Collectibles (Issue #49) ─────────────── */
@@ -770,7 +787,7 @@ class PhysicsGame {
   /* ── Draw ─────────────────────────────────────────────────────── */
   _draw(_dt) {
     const ctx = this.ctx;
-    const W = this.canvas.width, H = this.canvas.height;
+    const W = this.width || this.canvas.width, H = this.height || this.canvas.height;
 
     ctx.clearRect(0, 0, W, H);
 
@@ -836,7 +853,7 @@ class PhysicsGame {
       if (coin.collected) return;
       const sx = coin.wx - camX;
       const sy = this.terrain.heightAt(coin.wx) - (coin.yOffset || 35) + Math.sin(coin.animT) * 8 - camY;
-      if (sx < -40 || sx > this.canvas.width / this.camera.zoom + 40) return;
+      if (sx < -40 || sx > (this.camera.screenW / this.camera.zoom) + 40) return;
 
       ctx.save();
       ctx.shadowColor = coin.isCrest ? '#FF4081' : '#FFD700';
@@ -871,7 +888,7 @@ class PhysicsGame {
       if (fc.collected) return;
       const sx = fc.wx - camX;
       const sy = this.terrain.heightAt(fc.wx) - 30 - camY;
-      if (sx < -40 || sx > this.canvas.width / this.camera.zoom + 40) return;
+      if (sx < -40 || sx > (this.camera.screenW / this.camera.zoom) + 40) return;
 
       ctx.save();
       ctx.shadowColor = '#E53935';
