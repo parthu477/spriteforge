@@ -201,10 +201,10 @@ class Chassis {
     this.inertia       = cfg.inertia       ?? 28000;
     this.wheelBaseHalf = cfg.wheelBaseHalf ?? 44;
     this.wheelOffsetY  = cfg.wheelOffsetY  ?? 22;
-    this.engineTorque  = cfg.engineTorque  ?? 18000;
-    this.brakeTorque   = cfg.brakeTorque   ?? 9000;
+    this.engineTorque  = cfg.engineTorque  ?? 160000; // Scaled up from 18,000 for realistic slope climbing power
+    this.brakeTorque   = cfg.brakeTorque   ?? 80000;  // Scaled up from 9,000
     this.maxSpeed      = cfg.maxSpeed      ?? 680;
-    this.airRotTorque  = cfg.airRotTorque  ?? 5500;
+    this.airRotTorque  = cfg.airRotTorque  ?? 7500;
 
     // World state
     this.pos   = new Vec2(200, 300); // world position (chassis centre)
@@ -216,10 +216,10 @@ class Chassis {
     this._force  = new Vec2(0, 0);
     this._torque = 0;
 
-    // Wheel attachment (local body coords)
+    // Wheel attachment (local body coords) — AWD: both wheels deliver drive torque
     this.wheels = [
-      new Wheel({ restLength: 55, stiffness: 2800, damping: 160, radius: 16, isDriveWheel: false }), // rear
-      new Wheel({ restLength: 55, stiffness: 2800, damping: 160, radius: 16, isDriveWheel: true  }), // front
+      new Wheel({ restLength: 55, stiffness: 3200, damping: 180, radius: 16, isDriveWheel: true }), // rear
+      new Wheel({ restLength: 55, stiffness: 3200, damping: 180, radius: 16, isDriveWheel: true }), // front
     ];
 
     // State flags
@@ -298,29 +298,42 @@ class Chassis {
     this.onGround = this.wheels[0].onGround || this.wheels[1].onGround;
 
     if (this.onGround) {
-      if (this.fuel > 0 && Math.abs(this.throttle) > 0.01) {
-        // Drive torque on rear wheel
-        const speedRatio = Math.min(Math.abs(this.vel.x) / this.maxSpeed, 1);
-        const torque = this.engineTorque * this.throttle * (1 - speedRatio * 0.7);
+      const slopeAngle = terrain.slopeAt(this.pos.x);
+      const downhillGravity = this.mass * gravity * Math.sin(slopeAngle);
 
-        // Apply as horizontal force proportional to torque / wheel radius
-        const driveForce = torque / this.wheels[1].radius;
-        const slopeAngle = terrain.slopeAt(this.pos.x);
-        this._force.x += driveForce * Math.cos(slopeAngle);
-        this._force.y += driveForce * Math.sin(slopeAngle) * 0.3;
+      if (this.fuel > 0 && Math.abs(this.throttle) > 0.01) {
+        // Compute speed ratio & progressive engine torque curve
+        const speedRatio = Math.min(Math.abs(this.vel.x) / this.maxSpeed, 1);
+        const torque = this.engineTorque * this.throttle * (1 - speedRatio * 0.6);
+
+        // Drive force applied at contact patch (AWD / Rear-wheel priority for hill climbs)
+        const driveWheel = (this.wheels[0].onGround) ? this.wheels[0] : this.wheels[1];
+        const baseDriveForce = (torque / driveWheel.radius) * 20;
+
+        // Downhill compensation when pressing gas uphill (slopeAngle > 0 and throttle > 0)
+        // so vehicle never stalls on procedural inclines
+        const slopeComp = (slopeAngle > 0 && this.throttle > 0) ? downhillGravity * 1.15 : 0;
+        const totalDriveForce = baseDriveForce + slopeComp;
+
+        this._force.x += totalDriveForce * Math.cos(slopeAngle);
+        this._force.y += totalDriveForce * Math.sin(slopeAngle);
 
         // Fuel drain
-        this.fuel = Math.max(0, this.fuel - Math.abs(this.throttle) * dt * 2.8);
+        this.fuel = Math.max(0, this.fuel - Math.abs(this.throttle) * dt * 2.5);
       }
 
       if (this.braking) {
         // Friction brake
-        const brakeMag = Math.min(Math.abs(this.vel.x), this.brakeTorque / this.mass * dt);
+        const brakeMag = Math.min(Math.abs(this.vel.x), (this.brakeTorque / this.mass) * dt * 25);
         this._force.x -= Math.sign(this.vel.x) * brakeMag * this.mass / dt;
+        // Holding brake on slopes stops gravity rollback
+        if (Math.abs(this.vel.x) < 25) {
+          this._force.x -= downhillGravity * 0.95;
+        }
       }
 
-      // Ground friction drag
-      this._force.x -= this.vel.x * 120;
+      // Ground rolling resistance (friction drag)
+      this._force.x -= this.vel.x * 60;
 
       // Chassis angle damping on ground
       this.angVel *= 0.80;
@@ -375,24 +388,42 @@ class Chassis {
       const groundY = terrain.heightAt(attach.x);
       const wheelCentreY = attach.y + wheel.restLength;
       const pen = (wheelCentreY + wheel.radius) - groundY;
-      if (pen > 0 && wheel.onGround) {
-        this.pos.y -= pen * 0.8; // push chassis up
-        if (this.vel.y > 0) this.vel.y *= 0.2; // bounce reduction
+      if (pen > 0) {
+        this.pos.y -= pen * 0.85; // push chassis up
+        if (this.vel.y > 0) this.vel.y *= 0.15; // bounce reduction
       }
     });
+
+    // Lower chassis clearance check
+    const bottomY = this.pos.y + this.hh;
+    const centerGroundY = terrain.heightAt(this.pos.x);
+    if (bottomY > centerGroundY - 4) {
+      this.pos.y = centerGroundY - this.hh - 4;
+      if (this.vel.y > 0) this.vel.y = 0;
+    }
   }
 
   _checkCrash(terrain) {
-    // Roof corners touch ground → crash
+    // Pitch angle in degrees from upright horizontal
+    const pitchDeg = Math.abs(this.angle * RAD2DEG);
+
+    // Normal driving pitch is within +/- 75 degrees: NEVER falsely trigger a roof crash on slopes!
+    const isUpright = Math.cos(this.angle) > 0.26 && pitchDeg < 75;
+    if (isUpright) {
+      this._roofContactTimer = 0;
+      return;
+    }
+
+    // Only when vehicle is severely tilted or inverted, check if roof corners contact terrain
     const roofCorners = [
-      this._localToWorld(-this.hw, -this.hh),
-      this._localToWorld( this.hw, -this.hh),
+      this._localToWorld(-this.hw * 0.8, -this.hh),
+      this._localToWorld( this.hw * 0.8, -this.hh),
     ];
     for (const rc of roofCorners) {
       const gy = terrain.heightAt(rc.x);
       if (rc.y >= gy) {
         this._roofContactTimer += 1;
-        if (this._roofContactTimer > 4) { // 4 consecutive frames
+        if (this._roofContactTimer > 3) { // 3 consecutive frames on inverted contact
           this.crashed = true;
         }
         return;
@@ -446,10 +477,11 @@ class Chassis {
     this.rigging.frontAttachRatio = p.front;
 
     this.wheels.forEach(w => {
-      w.radius     = p.wheelRadius;
-      w.restLength = p.restLength;
-      w.stiffness  = p.stiffness;
-      w.damping    = p.damping;
+      w.radius       = p.wheelRadius;
+      w.restLength   = p.restLength;
+      w.stiffness    = p.stiffness;
+      w.damping      = p.damping;
+      w.isDriveWheel = true;
     });
 
     this._applyRigging();

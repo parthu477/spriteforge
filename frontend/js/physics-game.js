@@ -719,11 +719,22 @@ class PhysicsGame {
         el.classList.remove('pedal-pressed');
       };
 
-      // Pointer events for zero input latency on touch and mouse
-      el.addEventListener('pointerdown',   e => { e.preventDefault(); press();   });
-      el.addEventListener('pointerup',     e => { e.preventDefault(); release(); });
-      el.addEventListener('pointercancel', e => { e.preventDefault(); release(); });
-      el.addEventListener('pointerleave',  e => { e.preventDefault(); release(); });
+      // Robust Pointer events with Pointer Capture to prevent premature release on cursor drag
+      el.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        try { el.setPointerCapture(e.pointerId); } catch (_) {}
+        press();
+      });
+      el.addEventListener('pointerup', e => {
+        e.preventDefault();
+        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+        release();
+      });
+      el.addEventListener('pointercancel', e => {
+        e.preventDefault();
+        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+        release();
+      });
 
       // Fallback touch events
       el.addEventListener('touchstart',  e => { e.preventDefault(); press();   }, { passive: false });
@@ -745,10 +756,21 @@ class PhysicsGame {
         jumpPedal.classList.remove('pedal-pressed');
       };
 
-      jumpPedal.addEventListener('pointerdown',   e => { e.preventDefault(); triggerJump(); });
-      jumpPedal.addEventListener('pointerup',     e => { e.preventDefault(); releaseJump(); });
-      jumpPedal.addEventListener('pointercancel', e => { e.preventDefault(); releaseJump(); });
-      jumpPedal.addEventListener('pointerleave',  e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        try { jumpPedal.setPointerCapture(e.pointerId); } catch (_) {}
+        triggerJump();
+      });
+      jumpPedal.addEventListener('pointerup', e => {
+        e.preventDefault();
+        try { jumpPedal.releasePointerCapture(e.pointerId); } catch (_) {}
+        releaseJump();
+      });
+      jumpPedal.addEventListener('pointercancel', e => {
+        e.preventDefault();
+        try { jumpPedal.releasePointerCapture(e.pointerId); } catch (_) {}
+        releaseJump();
+      });
       jumpPedal.addEventListener('touchstart',  e => { e.preventDefault(); triggerJump(); }, { passive: false });
       jumpPedal.addEventListener('touchend',    e => { e.preventDefault(); releaseJump(); }, { passive: false });
       jumpPedal.addEventListener('touchcancel', e => { e.preventDefault(); releaseJump(); }, { passive: false });
@@ -1201,7 +1223,7 @@ class PhysicsGame {
       if (this.goTotal)  this.goTotal.textContent  = this.totalScore + ' pts';
 
       this.crashOverlay.hidden = false;
-    }, reason === 'fuel' ? 200 : 800);
+    }, reason === 'fuel' ? 200 : 250);
   }
 
   /* ── Draw ─────────────────────────────────────────────────────── */
@@ -1493,6 +1515,7 @@ class PhysicsGame {
   /* ── Restart Run (Shortcut R or Try Again Button) ─────────────── */
   _restart() {
     this.hasVehicle      = true;
+    this.chassis.crashed = false;
     this.chassis.reset(200, this.terrain);
     this.chassis.fuel    = 100;
     this.distanceMeters  = 0;
