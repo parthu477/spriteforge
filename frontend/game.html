@@ -68,6 +68,13 @@
         🔊 Mute
       </button>
 
+      <!-- Real-Time Incoming Asset Shelf Trigger Control -->
+      <button id="shelf-btn" class="ctrl-btn shelf-btn" title="Open Incoming Asset Shelf">
+        <span class="shelf-btn-icon">📥</span>
+        <span class="shelf-btn-text">Import / Integrate Sprite</span>
+        <span id="shelf-badge" class="shelf-counter-badge" hidden>0</span>
+      </button>
+
       <!-- Key hints -->
       <div class="ctrl-hints">
         <span class="hint-chip">W / D / ↑ / → Gas / Air-Tilt</span>
@@ -76,6 +83,39 @@
         <span class="hint-chip">R Restart</span>
       </div>
     </div>
+
+    <!-- Glassmorphic Incoming Asset Shelf Modal/Drawer -->
+    <div id="shelf-backdrop" class="shelf-backdrop" hidden></div>
+    <aside id="asset-shelf" class="asset-shelf" hidden aria-label="Incoming Assets">
+      <div class="shelf-header">
+        <div class="shelf-header-left">
+          <span class="shelf-header-icon">📥</span>
+          <div>
+            <h2 class="shelf-header-title">Incoming Asset Shelf</h2>
+            <span class="shelf-header-subtitle">Biome Sandbox World Integration</span>
+          </div>
+        </div>
+        <div class="shelf-header-right">
+          <span id="shelf-count-tag" class="shelf-badge-tag">0 assets</span>
+          <button type="button" id="shelf-close" class="shelf-close-btn" aria-label="Close Shelf">✕</button>
+        </div>
+      </div>
+
+      <div class="shelf-body">
+        <div class="shelf-list" id="shelf-list">
+          <div class="shelf-empty">
+            <span class="shelf-empty-icon">📦</span>
+            <p class="shelf-empty-title">No incoming assets yet</p>
+            <p class="shelf-empty-sub">Dispatch sprites from the <a href="/" target="_blank">Generator</a> using <strong>[ 🎮 Send to Biome Sandbox ]</strong></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="shelf-footer">
+        <span class="shelf-footer-hint">Real-time bus connected via BroadcastChannel</span>
+        <button type="button" id="shelf-clear" class="shelf-btn-clear" title="Clear incoming list">Clear Shelf</button>
+      </div>
+    </aside>
 
     <!-- Sandbox Stage -->
     <div class="sandbox-stage" id="sandbox-stage">
