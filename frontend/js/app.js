@@ -751,6 +751,9 @@ async function loadGallery() {
         <div class="gallery-item-footer">
           <span class="gallery-item-name">${s.name}</span>
           <div class="gallery-item-actions">
+            <button type="button" class="gallery-btn dispatch-physics" data-name="${s.name}" title="🚀 Send to Physics Sandbox">🚀</button>
+            <button type="button" class="gallery-btn dispatch-biome" data-name="${s.name}" title="🎮 Send to Biome Sandbox">🎮</button>
+            <button type="button" class="gallery-btn dispatch-both" data-name="${s.name}" title="⚡ Send to Both Sandboxes">⚡</button>
             <a href="/physics?sprite=${encodeURIComponent(s.name)}" target="_blank" class="gallery-btn drive" title="Drive in Physics Sandbox">🚗</a>
             <button class="gallery-btn reroll-gallery" title="Re-roll">🎲</button>
             <button class="gallery-btn delete" title="Delete">🗑</button>
@@ -758,6 +761,52 @@ async function loadGallery() {
         </div>
       </div>
     `).join('');
+
+    // Wire real-time dispatch buttons on each gallery item
+    galleryGrid.querySelectorAll('.gallery-btn.dispatch-physics').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sprite = sprites.find(s => s.name === btn.dataset.name);
+        if (!sprite) return;
+        dispatchSpriteAsset('physics', {
+          id: sprite.name + '_' + Date.now(),
+          name: sprite.name,
+          imageUrl: sprite.image_url,
+          metadata: sprite.metadata || {},
+          timestamp: Date.now(),
+        });
+      });
+    });
+
+    galleryGrid.querySelectorAll('.gallery-btn.dispatch-biome').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sprite = sprites.find(s => s.name === btn.dataset.name);
+        if (!sprite) return;
+        dispatchSpriteAsset('biome', {
+          id: sprite.name + '_' + Date.now(),
+          name: sprite.name,
+          imageUrl: sprite.image_url,
+          metadata: sprite.metadata || {},
+          timestamp: Date.now(),
+        });
+      });
+    });
+
+    galleryGrid.querySelectorAll('.gallery-btn.dispatch-both').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sprite = sprites.find(s => s.name === btn.dataset.name);
+        if (!sprite) return;
+        dispatchSpriteAsset('both', {
+          id: sprite.name + '_' + Date.now(),
+          name: sprite.name,
+          imageUrl: sprite.image_url,
+          metadata: sprite.metadata || {},
+          timestamp: Date.now(),
+        });
+      });
+    });
 
     // Mount and animate on clicking any gallery sprite (AC 21.6)
     galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
@@ -936,10 +985,156 @@ document.addEventListener('click', (e) => {
   }
 });
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeExportMenu();
+// ── Cross-Window Asset Communication Bus ────────────────────────
+const ASSET_BUS_CHANNEL = 'spriteforge_asset_bus';
+const ASSET_QUEUE_KEY = 'spriteforge_dispatched_assets';
+const ASSET_FALLBACK_EVENT_KEY = 'spriteforge_bus_event';
+const MAX_QUEUE_ITEMS = 50;
+
+/**
+ * Dispatch an asset to open or future sandboxes via BroadcastChannel + storage fallback.
+ * @param {'physics'|'biome'|'both'} target
+ * @param {Object} asset
+ */
+function dispatchSpriteAsset(target, asset) {
+  if (!asset || !asset.name || !asset.imageUrl) {
+    showToast('No valid sprite selected to dispatch!', 'warning', '⚠️');
+    return;
   }
+
+  const payload = {
+    type: 'ASSET_DISPATCH',
+    target: target,
+    asset: {
+      id: asset.id || ('sf_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
+      name: asset.name,
+      imageUrl: asset.imageUrl,
+      metadata: asset.metadata || {},
+      timestamp: asset.timestamp || Date.now(),
+      userId: asset.userId,
+    },
+  };
+
+  // 1. Persistent FIFO queue in localStorage (max 50 items)
+  try {
+    let queue = [];
+    const stored = localStorage.getItem(ASSET_QUEUE_KEY);
+    if (stored) {
+      queue = JSON.parse(stored);
+      if (!Array.isArray(queue)) queue = [];
+    }
+    // Filter any duplicate entry with identical ID or name to prevent duplicates
+    queue = queue.filter(item => item?.asset?.id !== payload.asset.id && item?.asset?.name !== payload.asset.name);
+    // Unshift so latest item is at index 0 (FIFO queue retaining newest 50)
+    queue.unshift(payload);
+    if (queue.length > MAX_QUEUE_ITEMS) {
+      queue.length = MAX_QUEUE_ITEMS;
+    }
+    localStorage.setItem(ASSET_QUEUE_KEY, JSON.stringify(queue));
+  } catch (err) {
+    console.warn('Failed to persist dispatched asset in localStorage:', err);
+  }
+
+  // 2. Real-time BroadcastChannel broadcast
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const channel = new BroadcastChannel(ASSET_BUS_CHANNEL);
+      channel.postMessage(payload);
+      channel.close();
+    } catch (err) {
+      console.warn('BroadcastChannel error, falling back to storage listener:', err);
+    }
+  }
+
+  // 3. Fault-tolerant fallback: localStorage storage event
+  try {
+    localStorage.setItem(ASSET_FALLBACK_EVENT_KEY, JSON.stringify({
+      payload,
+      nonce: Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+    }));
+  } catch (err) {
+    console.warn('Storage fallback event error:', err);
+  }
+
+  // 4. Animated Toast Notification
+  const targetName = target === 'both' ? 'Both Sandboxes' : target === 'physics' ? 'Physics Sandbox' : 'Biome Sandbox';
+  const icon = target === 'both' ? '⚡' : target === 'physics' ? '🚀' : '🎮';
+  showToast(`Dispatched "${payload.asset.name}" to ${targetName}!`, 'success', icon);
+}
+
+/**
+ * Animated Toast Notification component
+ * @param {string} message
+ * @param {'success'|'warning'|'info'|'error'} type
+ * @param {string} icon
+ */
+function showToast(message, type = 'success', icon = '🚀') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `sf-toast toast-${type}`;
+  toast.setAttribute('role', 'status');
+  toast.innerHTML = `
+    <span class="toast-icon">${icon}</span>
+    <div class="toast-body">
+      <div class="toast-title">Asset Dispatched</div>
+      <div class="toast-msg">${message}</div>
+    </div>
+    <button type="button" class="toast-close" aria-label="Close notification">&times;</button>
+  `;
+
+  container.appendChild(toast);
+
+  // Trigger CSS enter transition
+  requestAnimationFrame(() => {
+    toast.classList.add('toast-show');
+  });
+
+  const dismiss = () => {
+    if (!toast.parentNode) return;
+    toast.classList.remove('toast-show');
+    toast.classList.add('toast-hide');
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 300);
+  };
+
+  toast.querySelector('.toast-close')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+
+  setTimeout(dismiss, 3500);
+}
+
+// ── Wire Result Card Dispatch Buttons ──────────────────────────
+const dispatchPhysicsBtn = document.getElementById('dispatch-physics-btn');
+const dispatchBiomeBtn   = document.getElementById('dispatch-biome-btn');
+const dispatchBothBtn    = document.getElementById('dispatch-both-btn');
+
+dispatchPhysicsBtn?.addEventListener('click', () => {
+  if (!currentActiveSprite || !currentActiveSprite.imageUrl) {
+    showToast('Generate or select a sprite first!', 'warning', '⚠️');
+    return;
+  }
+  dispatchSpriteAsset('physics', currentActiveSprite);
+});
+
+dispatchBiomeBtn?.addEventListener('click', () => {
+  if (!currentActiveSprite || !currentActiveSprite.imageUrl) {
+    showToast('Generate or select a sprite first!', 'warning', '⚠️');
+    return;
+  }
+  dispatchSpriteAsset('biome', currentActiveSprite);
+});
+
+dispatchBothBtn?.addEventListener('click', () => {
+  if (!currentActiveSprite || !currentActiveSprite.imageUrl) {
+    showToast('Generate or select a sprite first!', 'warning', '⚠️');
+    return;
+  }
+  dispatchSpriteAsset('both', currentActiveSprite);
 });
 
 toggleGalleryBtn?.addEventListener('click', () => {
@@ -955,4 +1150,5 @@ if (stagePlaceholder && resultSection) {
   stagePlaceholder.hidden = !resultSection.hidden;
 }
 loadGallery();
+
 

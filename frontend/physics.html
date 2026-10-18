@@ -30,6 +30,7 @@
       <a href="/"     class="nav-link">← Generator</a>
       <a href="/game" class="nav-link">🎨 Biome Sandbox</a>
       <a href="/api/health" target="_blank" class="nav-health" id="health-indicator" title="API Health">● Live</a>
+      <div class="auth-nav-container" id="auth-nav-container"></div>
     </div>
   </nav>
 
@@ -91,6 +92,13 @@
 
       <button id="pg-mute-btn" class="ctrl-btn mute-btn">🔊 Mute</button>
 
+      <!-- Real-Time Incoming Asset Shelf Trigger Control -->
+      <button id="pg-shelf-btn" class="ctrl-btn shelf-btn" title="Open Incoming Asset Shelf">
+        <span class="shelf-btn-icon">📥</span>
+        <span class="shelf-btn-text">Import / Integrate Sprite</span>
+        <span id="pg-shelf-badge" class="shelf-counter-badge" hidden>0</span>
+      </button>
+
       <div class="ctrl-hints">
         <span class="hint-chip">W / D / ↑ / → Gas / Air-Tilt</span>
         <span class="hint-chip">S / A / ↓ / ← Brake / Air-Tilt</span>
@@ -100,6 +108,39 @@
         <button type="button" id="toggle-info-btn" class="ctrl-btn btn-info" title="View features and guide">ℹ️ Info</button>
       </div>
     </div>
+
+    <!-- Glassmorphic Incoming Asset Shelf Modal/Drawer -->
+    <div id="pg-shelf-backdrop" class="shelf-backdrop" hidden></div>
+    <aside id="pg-asset-shelf" class="asset-shelf" hidden aria-label="Incoming Assets">
+      <div class="shelf-header">
+        <div class="shelf-header-left">
+          <span class="shelf-header-icon">📥</span>
+          <div>
+            <h2 class="shelf-header-title">Incoming Asset Shelf</h2>
+            <span class="shelf-header-subtitle">Physics Sandbox Integration</span>
+          </div>
+        </div>
+        <div class="shelf-header-right">
+          <span id="pg-shelf-count-tag" class="shelf-badge-tag">0 assets</span>
+          <button type="button" id="pg-shelf-close" class="shelf-close-btn" aria-label="Close Shelf">✕</button>
+        </div>
+      </div>
+
+      <div class="shelf-body">
+        <div class="shelf-list" id="pg-shelf-list">
+          <div class="shelf-empty">
+            <span class="shelf-empty-icon">📦</span>
+            <p class="shelf-empty-title">No incoming assets yet</p>
+            <p class="shelf-empty-sub">Dispatch sprites from the <a href="/" target="_blank">Generator</a> using <strong>[ 🚀 Send to Physics Sandbox ]</strong></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="shelf-footer">
+        <span class="shelf-footer-hint">Real-time bus connected via BroadcastChannel</span>
+        <button type="button" id="pg-shelf-clear" class="shelf-btn-clear" title="Clear incoming list">Clear Shelf</button>
+      </div>
+    </aside>
 
     <!-- Physics sandbox stage (single canvas) -->
     <div class="sandbox-stage pg-stage" id="pg-stage">
@@ -208,17 +249,17 @@
 
     <!-- Mobile / On-Screen Touch Pedals (Issue #49) -->
     <div class="touch-controls pg-touch-pedals" id="pg-touch-controls">
-      <button id="pg-touch-brake" class="touch-pedal pedal-brake" aria-label="Brake / Reverse / Air-Tilt Left">
+      <button id="pg-touch-brake" class="touch-pedal pedal-brake" style="touch-action: none;" aria-label="Brake / Reverse / Air-Tilt Left">
         <span class="pedal-icon">⬅</span>
         <span class="pedal-title">BRAKE</span>
         <span class="pedal-sub">Air-Tilt ↺</span>
       </button>
-      <button id="pg-touch-jump" class="touch-pedal pedal-jump" aria-label="Jump / Launch Vehicle">
+      <button id="pg-touch-jump" class="touch-pedal pedal-jump" style="touch-action: none;" aria-label="Jump / Launch Vehicle">
         <span class="pedal-icon">🚀</span>
         <span class="pedal-title">JUMP</span>
         <span class="pedal-sub">Launch [Space]</span>
       </button>
-      <button id="pg-touch-gas" class="touch-pedal pedal-gas" aria-label="Gas / Accelerate / Air-Tilt Right">
+      <button id="pg-touch-gas" class="touch-pedal pedal-gas" style="touch-action: none;" aria-label="Gas / Accelerate / Air-Tilt Right">
         <span class="pedal-icon">➡</span>
         <span class="pedal-title">GAS</span>
         <span class="pedal-sub">Air-Tilt ↻</span>
@@ -261,6 +302,7 @@
     </div>
 
   <!-- Script load order: dependencies first -->
+  <script src="/static/js/auth.js"></script>
   <script src="/static/js/biome-parallax.js"></script>
   <script src="/static/js/audio-engine.js"></script>
   <script src="/static/js/terrain-engine.js"></script>

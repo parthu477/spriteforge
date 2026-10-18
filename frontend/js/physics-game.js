@@ -138,8 +138,15 @@ class PhysicsGame {
     this.camera.x      = 200 - (this.camera.screenW / 2) / this.camera.zoom;
     this.camera.y      = this.terrain.heightAt(200) - (this.camera.screenH / 2) / this.camera.zoom + (this.camera.verticalOffset) / this.camera.zoom;
 
+    // ── Incoming Asset Integration & Dynamic Simulation State ──
+    this.incomingAssets      = [];
+    this.unreadIncomingCount = 0;
+    this.dynamicBodies       = [];
+
     this._initEvents();
     this._initVehicleImporter();
+    this._initAssetShelf();
+    this._initAssetBus();
     this._resize();
     this._updateHUD();
     this._loop(0);
@@ -198,10 +205,439 @@ class PhysicsGame {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      const collider = scanSpriteAlphaCollider(img, item.metadata?.frame_width, item.metadata?.frame_height);
       this.chassis.setSprite(img, item.metadata || {});
+      if (collider) {
+        this.chassis.hw = collider.hw;
+        this.chassis.hh = collider.hh;
+        this.chassis.mass = collider.mass;
+        this.chassis.wheelOffsetY = collider.wheelOffsetY;
+        this.chassis.inertia = this.chassis.mass * (collider.hw * collider.hw + collider.hh * collider.hh) / 3;
+        this.chassis._applyRigging();
+      }
       this.spawnCar();
     };
     img.src = item.image_url;
+  }
+
+  /* ── Real-Time Asset Integration Shelf & Hybrid Bus ────────── */
+  _initAssetBus() {
+    const CHANNEL_NAME = 'spriteforge_asset_bus';
+    const QUEUE_KEY = 'spriteforge_dispatched_assets';
+    const EVENT_KEY = 'spriteforge_bus_event';
+
+    // 1. Initial queue load from persistent FIFO localStorage queue
+    try {
+      const stored = localStorage.getItem(QUEUE_KEY);
+      if (stored) {
+        const queue = JSON.parse(stored);
+        if (Array.isArray(queue)) {
+          const relevant = queue.filter(item => item?.target === 'physics' || item?.target === 'both');
+          this.incomingAssets = relevant;
+          this.unreadIncomingCount = relevant.length;
+          this._updateShelfBadge();
+          this._renderShelfList();
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load persistent dispatched assets for Physics Sandbox:', err);
+    }
+
+    // 2. Real-time BroadcastChannel listener
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.busChannel = new BroadcastChannel(CHANNEL_NAME);
+        this.busChannel.onmessage = (event) => {
+          this._handleIncomingAssetPayload(event.data);
+        };
+      } catch (err) {
+        console.warn('BroadcastChannel initialization error in Physics Sandbox:', err);
+      }
+    }
+
+    // 3. Fault-tolerant storage event fallback
+    window.addEventListener('storage', (event) => {
+      if (event.key === EVENT_KEY && event.newValue) {
+        try {
+          const data = JSON.parse(event.newValue);
+          if (data && data.payload) {
+            this._handleIncomingAssetPayload(data.payload);
+          }
+        } catch (_) {}
+      }
+    });
+  }
+
+  _handleIncomingAssetPayload(payload) {
+    if (!payload || payload.type !== 'ASSET_DISPATCH') return;
+    if (payload.target !== 'physics' && payload.target !== 'both') return;
+
+    const asset = payload.asset;
+    if (!asset || !asset.imageUrl) return;
+
+    // Deduplicate against existing items in shelf
+    const exists = this.incomingAssets.some(
+      item => item?.asset?.id === asset.id ||
+              (item?.asset?.name === asset.name && item?.asset?.timestamp === asset.timestamp)
+    );
+    if (exists) return;
+
+    this.incomingAssets.unshift(payload);
+    this.unreadIncomingCount++;
+    this._updateShelfBadge();
+    this._renderShelfList();
+
+    // Visual feedback in sandbox
+    this.audio?.playCoinPickup?.();
+    this._addPopup(this.chassis.pos.x, this.chassis.pos.y - 70, `📥 Dispatched: ${asset.name}!`, '#06b6d4');
+  }
+
+  _updateShelfBadge() {
+    if (!this.shelfBadge) return;
+    if (this.unreadIncomingCount > 0) {
+      this.shelfBadge.textContent = this.unreadIncomingCount;
+      this.shelfBadge.hidden = false;
+    } else {
+      this.shelfBadge.hidden = true;
+    }
+  }
+
+  _initAssetShelf() {
+    this.shelfBtn      = document.getElementById('pg-shelf-btn');
+    this.shelfBadge    = document.getElementById('pg-shelf-badge');
+    this.assetShelf    = document.getElementById('pg-asset-shelf');
+    this.shelfBackdrop = document.getElementById('pg-shelf-backdrop');
+    this.shelfClose    = document.getElementById('pg-shelf-close');
+    this.shelfList     = document.getElementById('pg-shelf-list');
+    this.shelfCountTag = document.getElementById('pg-shelf-count-tag');
+    this.shelfClear    = document.getElementById('pg-shelf-clear');
+
+    const openShelf = () => {
+      if (!this.assetShelf) return;
+      this.assetShelf.hidden = false;
+      if (this.shelfBackdrop) this.shelfBackdrop.hidden = false;
+      requestAnimationFrame(() => {
+        this.assetShelf.classList.add('open');
+      });
+      // Clear unread badge counter upon inspection
+      this.unreadIncomingCount = 0;
+      this._updateShelfBadge();
+      this._renderShelfList();
+    };
+
+    const closeShelf = () => {
+      if (!this.assetShelf) return;
+      this.assetShelf.classList.remove('open');
+      if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
+      setTimeout(() => {
+        if (!this.assetShelf.classList.contains('open')) {
+          this.assetShelf.hidden = true;
+        }
+      }, 350);
+    };
+
+    this.shelfBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.assetShelf?.classList.contains('open')) {
+        closeShelf();
+      } else {
+        openShelf();
+      }
+    });
+
+    this.shelfClose?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeShelf();
+    });
+
+    this.shelfBackdrop?.addEventListener('click', () => {
+      closeShelf();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.assetShelf?.classList.contains('open')) {
+        closeShelf();
+      }
+    });
+
+    this.shelfClear?.addEventListener('click', () => {
+      this.incomingAssets = [];
+      this.unreadIncomingCount = 0;
+      this._updateShelfBadge();
+      this._renderShelfList();
+      try {
+        localStorage.removeItem('spriteforge_dispatched_assets');
+      } catch (_) {}
+    });
+  }
+
+  _renderShelfList() {
+    if (!this.shelfList) return;
+    if (this.shelfCountTag) {
+      this.shelfCountTag.textContent = `${this.incomingAssets.length} asset${this.incomingAssets.length === 1 ? '' : 's'}`;
+    }
+
+    if (!this.incomingAssets.length) {
+      this.shelfList.innerHTML = `
+        <div class="shelf-empty">
+          <span class="shelf-empty-icon">📦</span>
+          <p class="shelf-empty-title">No incoming assets yet</p>
+          <p class="shelf-empty-sub">Dispatch sprites from the <a href="/" target="_blank">Generator</a> using <strong>[ 🚀 Send to Physics Sandbox ]</strong></p>
+        </div>
+      `;
+      return;
+    }
+
+    this.shelfList.innerHTML = this.incomingAssets.map((item, idx) => {
+      const a = item.asset;
+      const meta = a.metadata || {};
+      const fw = meta.frame_width || 128;
+      const fh = meta.frame_height || 128;
+      const grid = `${meta.rows || 1}×${meta.columns || 1}`;
+      const timeStr = a.timestamp ? new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Recent';
+      const targetClass = item.target === 'both' ? 'target-both' : 'target-physics';
+      const targetName = item.target === 'both' ? 'Both' : 'Physics';
+
+      return `
+        <div class="shelf-item-card" data-idx="${idx}">
+          <div class="shelf-card-top">
+            <div class="shelf-card-thumb-wrap">
+              <img src="${a.imageUrl}" alt="${a.name}" class="shelf-card-thumb" crossorigin="anonymous" loading="lazy">
+            </div>
+            <div class="shelf-card-info">
+              <span class="shelf-card-name">${a.name}</span>
+              <span class="shelf-card-meta">${fw}×${fh}px · ${grid}</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="shelf-target-badge ${targetClass}">${targetName}</span>
+                <span class="shelf-card-time">${timeStr}</span>
+              </div>
+            </div>
+          </div>
+          <div class="shelf-card-actions">
+            <button type="button" class="btn-quick-ingest" data-idx="${idx}" title="Calculate tight collider and bind to active vehicle chassis">
+              ⚡ Quick Ingest
+            </button>
+            <button type="button" class="btn-card-subaction btn-rig-chassis" data-idx="${idx}" title="Bind custom collider & suspension to active chassis">
+              🚗 Rig Chassis
+            </button>
+            <button type="button" class="btn-card-subaction btn-spawn-body" data-idx="${idx}" title="Calculate collider & spawn as dynamic rigid body into simulation">
+              🧱 Spawn Rigid Body
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire actions
+    this.shelfList.querySelectorAll('.btn-quick-ingest').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.ingestSpriteToChassis(item.asset, true);
+      });
+    });
+
+    this.shelfList.querySelectorAll('.btn-rig-chassis').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.ingestSpriteToChassis(item.asset, false);
+      });
+    });
+
+    this.shelfList.querySelectorAll('.btn-spawn-body').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.spawnDynamicRigidBody(item.asset);
+      });
+    });
+  }
+
+  /**
+   * Ingest sprite texture, auto-calculate tight collider dimensions,
+   * mass, and suspension offset, and bind to the active vehicle chassis.
+   */
+  ingestSpriteToChassis(asset, shouldReset = false) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const collider = scanSpriteAlphaCollider(img, asset.metadata?.frame_width, asset.metadata?.frame_height);
+
+      this.chassis.setSprite(img, asset.metadata || {});
+      if (collider) {
+        this.chassis.hw = collider.hw;
+        this.chassis.hh = collider.hh;
+        this.chassis.mass = collider.mass;
+        this.chassis.wheelOffsetY = collider.wheelOffsetY;
+        this.chassis.inertia = this.chassis.mass * (collider.hw * collider.hw + collider.hh * collider.hh) / 3;
+        this.chassis._applyRigging();
+      }
+
+      this.hasVehicle = true;
+      if (shouldReset) {
+        this.chassis.reset(this.chassis.pos.x, this.terrain);
+      }
+
+      this._addPopup(this.chassis.pos.x, this.chassis.pos.y - 60, `⚡ INGESTED: ${asset.name}!`, '#00FF88');
+      this.audio?.playCoinPickup?.();
+
+      // Close shelf on Quick Ingest for seamless gameplay
+      if (shouldReset && this.assetShelf?.classList.contains('open')) {
+        this.assetShelf.classList.remove('open');
+        if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
+        setTimeout(() => { this.assetShelf.hidden = true; }, 350);
+      }
+    };
+    img.src = asset.imageUrl;
+  }
+
+  /**
+   * Auto-calculate tight bounding box collider and spawn as dynamic rigid body in the simulation.
+   */
+  spawnDynamicRigidBody(asset) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const collider = scanSpriteAlphaCollider(img, asset.metadata?.frame_width, asset.metadata?.frame_height);
+
+      const spawnX = this.chassis.pos.x + 90;
+      const spawnY = this.chassis.pos.y - 70;
+
+      const body = {
+        id: 'body_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        img,
+        name: asset.name,
+        metadata: asset.metadata || {},
+        pos: new Vec2(spawnX, spawnY),
+        vel: new Vec2(this.chassis.vel.x + 60, -140),
+        angle: 0,
+        angularVel: (Math.random() - 0.5) * 5,
+        hw: collider ? collider.hw * 0.7 : 24,
+        hh: collider ? collider.hh * 0.7 : 18,
+        mass: collider ? collider.mass * 0.5 : 150,
+        restitution: 0.45,
+        friction: 0.65,
+      };
+
+      this.dynamicBodies.push(body);
+      if (this.dynamicBodies.length > 20) {
+        this.dynamicBodies.shift();
+      }
+
+      this._addPopup(spawnX, spawnY - 30, `🧱 SPAWNED: ${asset.name}`, '#ec4899');
+      this.audio?.playCoinPickup?.();
+    };
+    img.src = asset.imageUrl;
+  }
+
+  _updateDynamicBodies(dt) {
+    if (!this.dynamicBodies || !this.dynamicBodies.length) return;
+
+    const gravity = 980;
+    const c = this.chassis;
+
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const b = this.dynamicBodies[i];
+
+      // Gravity
+      b.vel.y += gravity * dt;
+
+      // Integrate motion
+      b.pos.x += b.vel.x * dt;
+      b.pos.y += b.vel.y * dt;
+      b.angle += b.angularVel * dt;
+
+      // Terrain collision
+      const terrainY = this.terrain.heightAt(b.pos.x);
+      if (b.pos.y + b.hh >= terrainY) {
+        // Resolve ground penetration
+        b.pos.y = terrainY - b.hh;
+
+        // Terrain slope normal
+        const slope = this.terrain.slopeAt ? this.terrain.slopeAt(b.pos.x) : 0;
+        const normAngle = Math.atan(slope) - Math.PI / 2;
+        const nx = Math.cos(normAngle);
+        const ny = Math.sin(normAngle);
+
+        // Dot product velocity . normal
+        const vn = b.vel.x * nx + b.vel.y * ny;
+        if (vn < 0) {
+          b.vel.x -= (1 + b.restitution) * vn * nx;
+          b.vel.y -= (1 + b.restitution) * vn * ny;
+
+          // Friction along ground
+          b.vel.x *= Math.max(0, 1 - b.friction * dt * 5);
+          b.angularVel *= 0.88;
+        }
+
+        // Particle puff on hard bounce
+        if (Math.abs(b.vel.y) > 40 && this.particles) {
+          const sx = (b.pos.x - this.camera.worldLeft) * this.camera.zoom;
+          const sy = (b.pos.y + b.hh - this.camera.worldTop) * this.camera.zoom;
+          this.particles.emit(sx, sy, { count: 2, size: 3, decay: 0.05 });
+        }
+      }
+
+      // Interaction with player vehicle chassis
+      const dx = b.pos.x - c.pos.x;
+      const dy = b.pos.y - c.pos.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = b.hw + c.hw;
+      if (dist < minDist && dist > 0.001) {
+        const overlap = minDist - dist;
+        const pushX = (dx / dist) * overlap;
+        const pushY = (dy / dist) * overlap;
+        b.pos.x += pushX * 0.8;
+        b.pos.y += pushY * 0.8;
+        b.vel.x += c.vel.x * 0.4 + pushX * 15;
+        b.vel.y -= 50;
+        b.angularVel += (Math.random() - 0.5) * 6;
+      }
+    }
+  }
+
+  _drawDynamicBodies(ctx, camX, camY) {
+    if (!this.dynamicBodies || !this.dynamicBodies.length) return;
+
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const b = this.dynamicBodies[i];
+      const sx = b.pos.x - camX;
+      const sy = b.pos.y - camY;
+
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(b.angle);
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, b.hh + 2, b.hw * 0.9, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Render sprite texture pixelated
+      if (b.img && b.img.complete && b.img.naturalWidth > 0) {
+        ctx.imageSmoothingEnabled = false;
+        const sw = b.metadata?.frame_width || b.img.naturalWidth || 128;
+        const sh = b.metadata?.frame_height || b.img.naturalHeight || 64;
+        ctx.drawImage(b.img, 0, 0, sw, sh, -b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      } else {
+        ctx.fillStyle = '#8b5cf6';
+        ctx.fillRect(-b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      }
+
+      // Debug collider overlay
+      if (this.showDebug) {
+        ctx.strokeStyle = '#00FF88';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      }
+
+      ctx.restore();
+    }
   }
 
   /* ── Events (Dual Control Scheme: Keyboard + Touch Pedals) ──── */
@@ -283,11 +719,22 @@ class PhysicsGame {
         el.classList.remove('pedal-pressed');
       };
 
-      // Pointer events for zero input latency on touch and mouse
-      el.addEventListener('pointerdown',   e => { e.preventDefault(); press();   });
-      el.addEventListener('pointerup',     e => { e.preventDefault(); release(); });
-      el.addEventListener('pointercancel', e => { e.preventDefault(); release(); });
-      el.addEventListener('pointerleave',  e => { e.preventDefault(); release(); });
+      // Robust Pointer events with Pointer Capture to prevent premature release on cursor drag
+      el.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        try { el.setPointerCapture(e.pointerId); } catch (_) {}
+        press();
+      });
+      el.addEventListener('pointerup', e => {
+        e.preventDefault();
+        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+        release();
+      });
+      el.addEventListener('pointercancel', e => {
+        e.preventDefault();
+        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+        release();
+      });
 
       // Fallback touch events
       el.addEventListener('touchstart',  e => { e.preventDefault(); press();   }, { passive: false });
@@ -309,10 +756,21 @@ class PhysicsGame {
         jumpPedal.classList.remove('pedal-pressed');
       };
 
-      jumpPedal.addEventListener('pointerdown',   e => { e.preventDefault(); triggerJump(); });
-      jumpPedal.addEventListener('pointerup',     e => { e.preventDefault(); releaseJump(); });
-      jumpPedal.addEventListener('pointercancel', e => { e.preventDefault(); releaseJump(); });
-      jumpPedal.addEventListener('pointerleave',  e => { e.preventDefault(); releaseJump(); });
+      jumpPedal.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        try { jumpPedal.setPointerCapture(e.pointerId); } catch (_) {}
+        triggerJump();
+      });
+      jumpPedal.addEventListener('pointerup', e => {
+        e.preventDefault();
+        try { jumpPedal.releasePointerCapture(e.pointerId); } catch (_) {}
+        releaseJump();
+      });
+      jumpPedal.addEventListener('pointercancel', e => {
+        e.preventDefault();
+        try { jumpPedal.releasePointerCapture(e.pointerId); } catch (_) {}
+        releaseJump();
+      });
       jumpPedal.addEventListener('touchstart',  e => { e.preventDefault(); triggerJump(); }, { passive: false });
       jumpPedal.addEventListener('touchend',    e => { e.preventDefault(); releaseJump(); }, { passive: false });
       jumpPedal.addEventListener('touchcancel', e => { e.preventDefault(); releaseJump(); }, { passive: false });
@@ -576,6 +1034,7 @@ class PhysicsGame {
 
     this.chassis.update(this.terrain, dt, biomeGravity);
     this.camera.update(this.chassis, dt);
+    this._updateDynamicBodies(dt);
 
     // ── Distance Tracking (Specification 4) ──────────────────────
     const currentMeters = Math.max(0, Math.floor((c.pos.x - 200) / 10));
@@ -781,7 +1240,7 @@ class PhysicsGame {
       if (this.goTotal)  this.goTotal.textContent  = this.totalScore + ' pts';
 
       this.crashOverlay.hidden = false;
-    }, reason === 'fuel' ? 200 : 800);
+    }, reason === 'fuel' ? 200 : 250);
   }
 
   /* ── Draw ─────────────────────────────────────────────────────── */
@@ -820,6 +1279,9 @@ class PhysicsGame {
     if (this.hasVehicle) {
       this.chassis.draw(ctx, camX, camY, this.biomeId);
     }
+
+    // ── Dynamic Rigid Bodies ─────────────────────────────────────
+    this._drawDynamicBodies(ctx, camX, camY);
 
     ctx.restore(); // undo camera transform
 
@@ -1070,6 +1532,7 @@ class PhysicsGame {
   /* ── Restart Run (Shortcut R or Try Again Button) ─────────────── */
   _restart() {
     this.hasVehicle      = true;
+    this.chassis.crashed = false;
     this.chassis.reset(200, this.terrain);
     this.chassis.fuel    = 100;
     this.distanceMeters  = 0;
@@ -1104,3 +1567,72 @@ class PhysicsGame {
 }
 
 window.PhysicsGame = PhysicsGame;
+
+/**
+ * Scans sprite alpha channel using an offscreen canvas to compute tight bounding box,
+ * dynamic collider dimensions, mass based on non-transparent pixel density, and suspension offset.
+ */
+function scanSpriteAlphaCollider(img, frameWidth, frameHeight) {
+  const fw = frameWidth || img.naturalWidth || 128;
+  const fh = frameHeight || img.naturalHeight || 64;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = fw;
+  canvas.height = fh;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, fw, fh, 0, 0, fw, fh);
+
+  let imgData;
+  try {
+    imgData = ctx.getImageData(0, 0, fw, fh).data;
+  } catch (err) {
+    console.warn('Canvas alpha scan fallback due to CORS/context:', err);
+    return null;
+  }
+
+  let minX = fw, maxX = 0, minY = fh, maxY = 0;
+  let solidPixels = 0;
+
+  for (let y = 0; y < fh; y++) {
+    for (let x = 0; x < fw; x++) {
+      const alpha = imgData[(y * fw + x) * 4 + 3];
+      if (alpha > 25) { // Non-transparent pixel threshold
+        solidPixels++;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (solidPixels === 0 || minX > maxX || minY > maxY) {
+    minX = 0; maxX = fw; minY = 0; maxY = fh;
+  }
+
+  const tightW = maxX - minX + 1;
+  const tightH = maxY - minY + 1;
+  const aspect = tightW / Math.max(1, tightH);
+
+  // Target vehicle display width on screen: ~110px
+  const targetW = 110;
+  const targetH = Math.max(26, Math.min(64, targetW / aspect));
+
+  // Compute mass from pixel area density
+  const area = tightW * tightH;
+  const density = solidPixels / Math.max(1, area);
+  const calculatedMass = Math.max(200, Math.min(600, Math.round(250 + (area / 18) * density)));
+
+  // Compute suspension offset: anchor wheels to lower bounds of scanned silhouette
+  const suspensionOffset = Math.max(18, Math.min(36, Math.round((targetH / 2) * 0.95)));
+
+  return {
+    raw: { minX, maxX, minY, maxY, tightW, tightH, solidPixels },
+    hw: Math.round(targetW / 2),
+    hh: Math.round(targetH / 2),
+    mass: calculatedMass,
+    wheelOffsetY: suspensionOffset,
+    aspect,
+  };
+}
+

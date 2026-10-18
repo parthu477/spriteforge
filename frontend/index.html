@@ -324,6 +324,25 @@
             🚗 Play in Game
           </a>
         </div>
+
+        <!-- Real-Time Cross-Window Sandbox Dispatch Actions -->
+        <div class="dispatch-toolbar" id="dispatch-toolbar">
+          <span class="dispatch-label">⚡ Real-Time Sandbox Dispatch:</span>
+          <div class="dispatch-buttons">
+            <button type="button" class="btn-dispatch btn-dispatch-physics" id="dispatch-physics-btn" title="Dispatch sprite in real-time to Physics Sandbox (/physics)">
+              <span class="dispatch-icon">🚀</span>
+              <span class="dispatch-text">Send to Physics Sandbox</span>
+            </button>
+            <button type="button" class="btn-dispatch btn-dispatch-biome" id="dispatch-biome-btn" title="Dispatch sprite in real-time to Biome Sandbox (/game)">
+              <span class="dispatch-icon">🎮</span>
+              <span class="dispatch-text">Send to Biome Sandbox</span>
+            </button>
+            <button type="button" class="btn-dispatch btn-dispatch-both" id="dispatch-both-btn" title="Dispatch sprite in real-time to both Sandboxes">
+              <span class="dispatch-icon">⚡</span>
+              <span class="dispatch-text">Send to Both</span>
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -344,6 +363,9 @@
     </section>
   </aside>
 </main>
+
+  <!-- Toast Notification Container for Real-time Dispatch Confirmations -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <script src="/static/js/auth.js"></script>
   <script src="/static/js/app.js"></script>

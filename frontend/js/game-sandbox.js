@@ -91,6 +91,12 @@ class GameSandbox {
     this.goTotal       = document.getElementById('go-total');
     this.restartBtn    = document.getElementById('restart-btn');
 
+    // ── Real-Time Asset Integration State ───────────────────────
+    this.incomingAssets      = [];
+    this.unreadIncomingCount = 0;
+    this.worldSprites        = []; // Sprites placed in world coordinates & parallax layers
+    this.customVehicleSprite = null; // Sprite texture skin for active vehicle
+
     // ── Entity State & Spawn Controls (Issue #44) ───────────────
     this.hasVehicle     = false;
     this.customSprite   = null;
@@ -103,6 +109,8 @@ class GameSandbox {
     this._lastTime = 0;
 
     this._initEvents();
+    this._initAssetShelf();
+    this._initAssetBus();
     this._resize();
     this._spawnInitialCollectibles();
     this._updateHUD();
@@ -743,6 +751,10 @@ class GameSandbox {
     const gY     = H * biome.groundLine - 30;
     const carSX  = W * 0.35; // car screen X
 
+    // ── Background & Midground Placed World Sprites (Parallax) ───
+    this._drawWorldSprites(ctx, 'background', biome, gY, carSX);
+    this._drawWorldSprites(ctx, 'midground',  biome, gY, carSX);
+
     // Draw uncollected coins — star icon for high-value crests and jump bonus (Issue #33 & #49)
     this.coins.forEach(coin => {
       if (coin.collected) return;
@@ -806,6 +818,9 @@ class GameSandbox {
       ctx.restore();
     });
 
+    // ── Ground-Level Placed World Sprites (Sorted behind Car) ────
+    this._drawWorldSprites(ctx, 'ground', biome, gY, carSX);
+
     // Draw car
     if (this.hasVehicle) {
       ctx.save();
@@ -821,6 +836,9 @@ class GameSandbox {
       ctx.restore();
     }
 
+    // ── Foreground Overlay Placed World Sprites (In front of Car) ─
+    this._drawWorldSprites(ctx, 'overlay', biome, gY, carSX);
+
     // Crash flash
     if (car.crashed && car.crashTimer > 1.2) {
       ctx.save();
@@ -831,6 +849,40 @@ class GameSandbox {
   }
 
   _drawCar(ctx, biomeId) {
+    // If a custom sprite is ingested as vehicle, render the sprite texture!
+    if (this.customVehicleSprite && this.customVehicleSprite.img && this.customVehicleSprite.img.complete) {
+      const s = this.customVehicleSprite;
+      const targetW = 96;
+      const aspect = s.fw / Math.max(1, s.fh);
+      const targetH = Math.max(30, Math.min(65, targetW / aspect));
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, 32, targetW * 0.45, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Multi-frame animation playback
+      const totalFrames = s.metadata?.frame_count || (s.metadata?.rows * s.metadata?.columns) || 1;
+      const fps = s.metadata?.fps || 8;
+      const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
+      const cols = s.metadata?.columns || totalFrames || 1;
+      const fx = (currentFrame % cols) * s.fw;
+      const fy = Math.floor(currentFrame / cols) * s.fh;
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(s.img, fx, fy, s.fw, s.fh, -targetW / 2, -targetH / 2, targetW, targetH);
+
+      // Chassis Wheels
+      const wheelPositions = [[-28, 22], [28, 22]];
+      wheelPositions.forEach(([wx, wy]) => {
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath(); ctx.arc(wx, wy, 11, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#06b6d4';
+        ctx.beginPath(); ctx.arc(wx, wy, 5, 0, Math.PI * 2); ctx.fill();
+      });
+      return;
+    }
     // Car body styling per biome
     const styles = {
       countryside: { body: '#E53935', roof: '#C62828', wheel: '#212121', detail: '#FFEB3B' },
@@ -949,7 +1001,403 @@ class GameSandbox {
     if (this._raf) cancelAnimationFrame(this._raf);
     this.audio.stopEngine?.();
     this.audio.stopFuelAlert?.();
+    if (this.busChannel) {
+      try { this.busChannel.close(); } catch (_) {}
+    }
+  }
+
+  /* ── Real-Time Asset Integration Shelf & Hybrid Bus ────────── */
+  _initAssetBus() {
+    const CHANNEL_NAME = 'spriteforge_asset_bus';
+    const QUEUE_KEY = 'spriteforge_dispatched_assets';
+    const EVENT_KEY = 'spriteforge_bus_event';
+
+    // 1. Initial queue load from persistent FIFO localStorage queue
+    try {
+      const stored = localStorage.getItem(QUEUE_KEY);
+      if (stored) {
+        const queue = JSON.parse(stored);
+        if (Array.isArray(queue)) {
+          const relevant = queue.filter(item => item?.target === 'biome' || item?.target === 'both');
+          this.incomingAssets = relevant;
+          this.unreadIncomingCount = relevant.length;
+          this._updateShelfBadge();
+          this._renderShelfList();
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load persistent dispatched assets for Biome Sandbox:', err);
+    }
+
+    // 2. Real-time BroadcastChannel listener
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.busChannel = new BroadcastChannel(CHANNEL_NAME);
+        this.busChannel.onmessage = (event) => {
+          this._handleIncomingAssetPayload(event.data);
+        };
+      } catch (err) {
+        console.warn('BroadcastChannel error in Biome Sandbox:', err);
+      }
+    }
+
+    // 3. Fault-tolerant storage event fallback
+    window.addEventListener('storage', (event) => {
+      if (event.key === EVENT_KEY && event.newValue) {
+        try {
+          const data = JSON.parse(event.newValue);
+          if (data && data.payload) {
+            this._handleIncomingAssetPayload(data.payload);
+          }
+        } catch (_) {}
+      }
+    });
+  }
+
+  _handleIncomingAssetPayload(payload) {
+    if (!payload || payload.type !== 'ASSET_DISPATCH') return;
+    if (payload.target !== 'biome' && payload.target !== 'both') return;
+
+    const asset = payload.asset;
+    if (!asset || !asset.imageUrl) return;
+
+    // Deduplicate against existing items in shelf
+    const exists = this.incomingAssets.some(
+      item => item?.asset?.id === asset.id ||
+              (item?.asset?.name === asset.name && item?.asset?.timestamp === asset.timestamp)
+    );
+    if (exists) return;
+
+    this.incomingAssets.unshift(payload);
+    this.unreadIncomingCount++;
+    this._updateShelfBadge();
+    this._renderShelfList();
+
+    this.audio?.playCoinPickup?.();
+    this.floatingPopups?.push({
+      x: this.W * 0.35,
+      y: 120,
+      text: `📥 New Sprite: ${asset.name}!`,
+      alpha: 1.2
+    });
+  }
+
+  _updateShelfBadge() {
+    if (!this.shelfBadge) return;
+    if (this.unreadIncomingCount > 0) {
+      this.shelfBadge.textContent = this.unreadIncomingCount;
+      this.shelfBadge.hidden = false;
+    } else {
+      this.shelfBadge.hidden = true;
+    }
+  }
+
+  _initAssetShelf() {
+    this.shelfBtn      = document.getElementById('shelf-btn');
+    this.shelfBadge    = document.getElementById('shelf-badge');
+    this.assetShelf    = document.getElementById('asset-shelf');
+    this.shelfBackdrop = document.getElementById('shelf-backdrop');
+    this.shelfClose    = document.getElementById('shelf-close');
+    this.shelfList     = document.getElementById('shelf-list');
+    this.shelfCountTag = document.getElementById('shelf-count-tag');
+    this.shelfClear    = document.getElementById('shelf-clear');
+
+    const openShelf = () => {
+      if (!this.assetShelf) return;
+      this.assetShelf.hidden = false;
+      if (this.shelfBackdrop) this.shelfBackdrop.hidden = false;
+      requestAnimationFrame(() => {
+        this.assetShelf.classList.add('open');
+      });
+      this.unreadIncomingCount = 0;
+      this._updateShelfBadge();
+      this._renderShelfList();
+    };
+
+    const closeShelf = () => {
+      if (!this.assetShelf) return;
+      this.assetShelf.classList.remove('open');
+      if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
+      setTimeout(() => {
+        if (!this.assetShelf.classList.contains('open')) {
+          this.assetShelf.hidden = true;
+        }
+      }, 350);
+    };
+
+    this.shelfBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.assetShelf?.classList.contains('open')) {
+        closeShelf();
+      } else {
+        openShelf();
+      }
+    });
+
+    this.shelfClose?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeShelf();
+    });
+
+    this.shelfBackdrop?.addEventListener('click', () => {
+      closeShelf();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.assetShelf?.classList.contains('open')) {
+        closeShelf();
+      }
+    });
+
+    this.shelfClear?.addEventListener('click', () => {
+      this.incomingAssets = [];
+      this.unreadIncomingCount = 0;
+      this._updateShelfBadge();
+      this._renderShelfList();
+      try {
+        localStorage.removeItem('spriteforge_dispatched_assets');
+      } catch (_) {}
+    });
+  }
+
+  _renderShelfList() {
+    if (!this.shelfList) return;
+    if (this.shelfCountTag) {
+      this.shelfCountTag.textContent = `${this.incomingAssets.length} asset${this.incomingAssets.length === 1 ? '' : 's'}`;
+    }
+
+    if (!this.incomingAssets.length) {
+      this.shelfList.innerHTML = `
+        <div class="shelf-empty">
+          <span class="shelf-empty-icon">📦</span>
+          <p class="shelf-empty-title">No incoming assets yet</p>
+          <p class="shelf-empty-sub">Dispatch sprites from the <a href="/" target="_blank">Generator</a> using <strong>[ 🎮 Send to Biome Sandbox ]</strong></p>
+        </div>
+      `;
+      return;
+    }
+
+    this.shelfList.innerHTML = this.incomingAssets.map((item, idx) => {
+      const a = item.asset;
+      const meta = a.metadata || {};
+      const fw = meta.frame_width || 128;
+      const fh = meta.frame_height || 128;
+      const grid = `${meta.rows || 1}×${meta.columns || 1}`;
+      const timeStr = a.timestamp ? new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Recent';
+      const targetClass = item.target === 'both' ? 'target-both' : 'target-biome';
+      const targetName = item.target === 'both' ? 'Both' : 'Biome';
+
+      return `
+        <div class="shelf-item-card" data-idx="${idx}">
+          <div class="shelf-card-top">
+            <div class="shelf-card-thumb-wrap">
+              <img src="${a.imageUrl}" alt="${a.name}" class="shelf-card-thumb" crossorigin="anonymous" loading="lazy">
+            </div>
+            <div class="shelf-card-info">
+              <span class="shelf-card-name">${a.name}</span>
+              <span class="shelf-card-meta">${fw}×${fh}px · ${grid}</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="shelf-target-badge ${targetClass}">${targetName}</span>
+                <span class="shelf-card-time">${timeStr}</span>
+              </div>
+            </div>
+          </div>
+          <div class="shelf-card-actions">
+            <button type="button" class="btn-quick-ingest" data-idx="${idx}" title="Quick Ingest: Place into parallax world and bind texture">
+              ⚡ Quick Ingest
+            </button>
+            <button type="button" class="btn-card-subaction btn-place-world" data-idx="${idx}" title="Place sprite into parallax world layers">
+              🌍 Place in World
+            </button>
+            <button type="button" class="btn-card-subaction btn-skin-car" data-idx="${idx}" title="Skin player vehicle with this sprite">
+              🚗 Drive as Vehicle
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    this.shelfList.querySelectorAll('.btn-quick-ingest').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (!item) return;
+        this.ingestSpriteToWorld(item.asset, 'ground');
+        this.ingestSpriteAsVehicle(item.asset);
+        if (this.assetShelf?.classList.contains('open')) {
+          this.assetShelf.classList.remove('open');
+          if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
+          setTimeout(() => { this.assetShelf.hidden = true; }, 350);
+        }
+      });
+    });
+
+    this.shelfList.querySelectorAll('.btn-place-world').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.ingestSpriteToWorld(item.asset);
+      });
+    });
+
+    this.shelfList.querySelectorAll('.btn-skin-car').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.ingestSpriteAsVehicle(item.asset);
+      });
+    });
+  }
+
+  /**
+   * Convert image to texture with crossOrigin = 'anonymous' and place in world coordinates
+   * respecting parallax depth, terrain ground offset, and sorting layer.
+   */
+  ingestSpriteToWorld(asset, preferredLayer = null) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const meta = asset.metadata || {};
+      const fw = meta.frame_width || img.naturalWidth || 128;
+      const fh = meta.frame_height || img.naturalHeight || 128;
+      const aspect = fw / Math.max(1, fh);
+      const drawW = 90;
+      const drawH = drawW / aspect;
+
+      // Determine sorting layer: cycle through ground, background, midground, overlay or use preferred
+      const layers = ['ground', 'midground', 'background', 'overlay'];
+      const layer = preferredLayer || layers[this.worldSprites.length % layers.length];
+
+      // World X placed ahead of current camera view
+      const worldX = this.cameraX + 280 + (this.worldSprites.length * 80);
+
+      this.worldSprites.push({
+        id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        img,
+        name: asset.name,
+        metadata: meta,
+        fw,
+        fh,
+        drawW,
+        drawH,
+        worldX,
+        groundOffset: 0,
+        layer,
+      });
+
+      this.floatingPopups?.push({
+        x: this.W * 0.35,
+        y: 160,
+        text: `🌍 Placed "${asset.name}" in [${layer}] layer!`,
+        alpha: 1.4
+      });
+      this.audio?.playCoinPickup?.();
+    };
+    img.src = asset.imageUrl;
+  }
+
+  /**
+   * Convert image to texture and skin active vehicle chassis with custom sprite.
+   */
+  ingestSpriteAsVehicle(asset) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const meta = asset.metadata || {};
+      const fw = meta.frame_width || img.naturalWidth || 128;
+      const fh = meta.frame_height || img.naturalHeight || 128;
+
+      this.hasVehicle = true;
+      this.customSprite = img;
+      this.customVehicleSprite = {
+        img,
+        name: asset.name,
+        metadata: meta,
+        fw,
+        fh,
+      };
+
+      this.floatingPopups?.push({
+        x: this.W * 0.35,
+        y: 190,
+        text: `🚗 Vehicle Skinned: ${asset.name}!`,
+        alpha: 1.4
+      });
+      this.audio?.playCoinPickup?.();
+    };
+    img.src = asset.imageUrl;
+  }
+
+  _drawWorldSprites(ctx, layerName, biome, gY, carSX) {
+    if (!this.worldSprites || !this.worldSprites.length) return;
+
+    const layerSpeeds = {
+      background: 0.15,
+      midground:  0.45,
+      ground:     1.00,
+      overlay:    1.15,
+    };
+    const speed = layerSpeeds[layerName] ?? 1.0;
+
+    for (let i = 0; i < this.worldSprites.length; i++) {
+      const ws = this.worldSprites[i];
+      if (ws.layer !== layerName) continue;
+
+      // Parallax depth calculation:
+      const sx = carSX + (ws.worldX - this.cameraX) * speed;
+
+      // Culling
+      if (sx < -180 || sx > this.W + 180) continue;
+
+      // Terrain ground offset & layer Y position
+      let sy = gY + ws.groundOffset;
+      let scale = 1.0;
+      if (layerName === 'background') {
+        sy = gY - 65 + ws.groundOffset;
+        scale = 0.65;
+      } else if (layerName === 'midground') {
+        sy = gY - 25 + ws.groundOffset;
+        scale = 0.85;
+      } else if (layerName === 'overlay') {
+        sy = gY + 12 + ws.groundOffset;
+        scale = 1.1;
+      }
+
+      const drawW = ws.drawW * scale;
+      const drawH = ws.drawH * scale;
+
+      ctx.save();
+
+      // Shadow under entity
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, drawW * 0.4, 5 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Multi-frame animation playback
+      const totalFrames = ws.metadata?.frame_count || (ws.metadata?.rows * ws.metadata?.columns) || 1;
+      const fps = ws.metadata?.fps || 8;
+      const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
+      const cols = ws.metadata?.columns || totalFrames || 1;
+      const fx = (currentFrame % cols) * ws.fw;
+      const fy = Math.floor(currentFrame / cols) * ws.fh;
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        ws.img,
+        fx, fy, ws.fw, ws.fh,
+        sx - drawW / 2,
+        sy - drawH,
+        drawW, drawH
+      );
+
+      ctx.restore();
+    }
   }
 }
 
 window.GameSandbox = GameSandbox;
+
