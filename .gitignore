@@ -60,3 +60,9 @@ engine.log
 
 # Spikes (throwaway evaluation scripts - ignore results only)
 spikes/results_*.json
+
+# SQLite Databases
+*.db
+backend/data/*.db
+!backend/data/.gitkeep
+

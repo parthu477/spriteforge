@@ -64,6 +64,7 @@ const SpriteForgeAuth = (() => {
     await _apiJson('/api/auth/logout', 'POST');
     _user = null;
     _updateNavbarUser();
+    window.location.href = '/login';
   }
 
   // ── Navbar User Menu ──────────────────────────────────────

@@ -22,6 +22,7 @@ from backend.logging_setup import setup_logging
 from backend.jobs import JobStore
 from backend.routes.ui import ui_bp
 from backend.routes.api import api_bp, init_api
+from backend.routes.auth import auth_bp
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ def create_app() -> Flask:
     # ── 5. Blueprints ─────────────────────────────────────────────
     app.register_blueprint(ui_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp)
 
     log.info(
         "SpriteForge started — provider=%s fallback=%s asset_dir=%s",
