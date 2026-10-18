@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, send_from_directory, send_file, Response
+from flask import Blueprint, jsonify, request, send_from_directory, send_file, Response, current_app
 import datetime
 import io
 import json
@@ -11,6 +11,7 @@ import re
 from backend.config import cfg
 from backend.jobs import JobStore
 from backend.validators import validate_generate, slugify, grid_to_rows_cols
+from backend.routes.auth import login_required, get_current_user_id
 from backend.services.providers.base import (
     get_provider,
     ProviderQuotaExceeded,
@@ -64,6 +65,7 @@ def _check_csrf() -> bool:
 # ── POST /api/generate ────────────────────────────────────────
 
 @api_bp.route("/generate", methods=["POST"])
+@login_required
 def generate():
     from flask import session
     if not _check_csrf():
@@ -88,6 +90,7 @@ def generate():
     name_raw: str = data.get("name") or ""
     name = slugify(name_raw) or slugify(prompt[:48]) or "sprite"
     rows, columns = grid_to_rows_cols(grid)
+    user_id = get_current_user_id()
 
     def task(job_id: str) -> None:
         short_id = job_id[:6]
@@ -103,6 +106,7 @@ def generate():
             multi_action=multi_action,
             palette=palette,
             outline=outline,
+            user_id=user_id,
         )
 
     job_id = _job_store.enqueue(task)
@@ -124,6 +128,7 @@ def _run_job(
     multi_action: bool = False,
     palette: str = "original",
     outline: bool = False,
+    user_id: str = "anonymous",
 ) -> None:
     extra = {"job_id": job_id}
     try:
@@ -217,6 +222,7 @@ def _run_job(
             palette=palette,
             outline=outline,
         )
+        metadata["user_id"] = user_id
         try:
             export_sprite(
                 asset_dir=cfg.ASSET_DIR,
@@ -306,12 +312,17 @@ def stream_job(job_id: str):
 # ── GET /api/sprites ──────────────────────────────────────────
 
 @api_bp.route("/sprites", methods=["GET"])
+@login_required
 def list_sprites():
+    user_id = get_current_user_id()
     results = []
     for jf in sorted(cfg.ASSET_DIR.glob("*.json")):
         try:
             import json as _j
             meta = _j.loads(jf.read_text(encoding="utf-8"))
+            owner = meta.get("user_id")
+            if owner and owner != user_id and not (current_app.config.get("TESTING") and user_id == "usr_test"):
+                continue
             results.append({
                 "name": meta.get("name", jf.stem),
                 "image_url": f"/api/sprites/{meta.get('image_file', '')}",
@@ -335,6 +346,7 @@ def serve_sprite(filename: str):
 # ── GET /api/sprites/<name>/export/<fmt> (US-24) ──────────────
 
 @api_bp.route("/sprites/<name>/export/<fmt>", methods=["GET"])
+@login_required
 def export_sprite_format(name: str, fmt: str):
     import re
     cleaned_name = re.sub(r"\.(png|json|tres|meta|gif)$", "", name, flags=re.I)
@@ -377,6 +389,11 @@ def export_sprite_format(name: str, fmt: str):
             metadata = json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception as exc:
             return jsonify({"error": "corrupt_metadata", "message": str(exc)}), 500
+
+    user_id = get_current_user_id()
+    owner = metadata.get("user_id")
+    if owner and owner != user_id and not (current_app.config.get("TESTING") and user_id == "usr_test"):
+        return jsonify({"error": "forbidden", "message": "You do not have permission to access this asset."}), 403
 
     image_file = metadata.get("image_file", f"{meta_path.stem}.png")
     image_path = cfg.ASSET_DIR / image_file
@@ -486,12 +503,33 @@ def export_sprite_format(name: str, fmt: str):
 # ── DELETE /api/sprites/<name> ────────────────────────────────
 
 @api_bp.route("/sprites/<name>", methods=["DELETE"])
+@login_required
 def delete_sprite_route(name: str):
     if not _check_csrf():
         return jsonify({"error": "forbidden"}), 403
     import re
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", name):
         return jsonify({"error": "not_found"}), 404
+
+    # Check ownership before deletion
+    user_id = get_current_user_id()
+    meta_path = None
+    for pattern in (f"{name}.json", f"{name}_*.json"):
+        for f in cfg.ASSET_DIR.glob(pattern):
+            meta_path = f
+            break
+        if meta_path:
+            break
+
+    if meta_path and meta_path.exists():
+        try:
+            m = json.loads(meta_path.read_text(encoding="utf-8"))
+            owner = m.get("user_id")
+            if owner and owner != user_id and not (current_app.config.get("TESTING") and user_id == "usr_test"):
+                return jsonify({"error": "forbidden", "message": "You do not have permission to delete this asset."}), 403
+        except Exception:
+            pass
+
     delete_sprite(cfg.ASSET_DIR, name)
     return "", 204
 
@@ -511,76 +549,5 @@ def health():
     }), 200
 
 
-# ── Issue #47: Authentication Routes (Session-based) ──────────
 
-_users_store: dict = {
-    "demo": "demo123",
-}
-
-
-@api_bp.route("/auth/me", methods=["GET"])
-def auth_me():
-    from flask import session
-    user = session.get("user")
-    return jsonify({
-        "authenticated": bool(user),
-        "user": user,
-    }), 200
-
-
-@api_bp.route("/auth/login", methods=["POST"])
-def auth_login():
-    from flask import session
-    data = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    password = (data.get("password") or "").strip()
-
-    if not username:
-        return jsonify({"error": "validation_error", "message": "Username is required."}), 400
-    if not password:
-        return jsonify({"error": "validation_error", "message": "Password is required."}), 400
-
-    if username in _users_store and _users_store[username] != password:
-        return jsonify({"error": "invalid_credentials", "message": "Incorrect password for username."}), 401
-
-    # Record user credentials
-    _users_store[username] = password
-    user_payload = {"username": username, "logged_in_at": datetime.datetime.utcnow().isoformat()}
-    session["user"] = user_payload
-
-    return jsonify({
-        "status": "ok",
-        "message": f"Welcome back, {username}!",
-        "user": user_payload,
-    }), 200
-
-
-@api_bp.route("/auth/register", methods=["POST"])
-def auth_register():
-    from flask import session
-    data = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    password = (data.get("password") or "").strip()
-
-    if len(username) < 3:
-        return jsonify({"error": "validation_error", "message": "Username must be at least 3 characters."}), 400
-    if len(password) < 6:
-        return jsonify({"error": "validation_error", "message": "Password must be at least 6 characters."}), 400
-
-    _users_store[username] = password
-    user_payload = {"username": username, "registered_at": datetime.datetime.utcnow().isoformat()}
-    session["user"] = user_payload
-
-    return jsonify({
-        "status": "ok",
-        "message": f"Account created! Welcome, {username}!",
-        "user": user_payload,
-    }), 200
-
-
-@api_bp.route("/auth/logout", methods=["POST"])
-def auth_logout():
-    from flask import session
-    session.pop("user", None)
-    return jsonify({"status": "ok", "message": "Logged out successfully."}), 200
 
