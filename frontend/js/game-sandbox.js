@@ -6,6 +6,18 @@
    ============================================================ */
 'use strict';
 
+const loadSafeImage = (typeof window !== 'undefined' && window.loadSafeImage) ? window.loadSafeImage : function(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err || new Error(`Failed to load image from ${url}`));
+    img.src = url;
+  });
+};
+
 class GameSandbox {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
@@ -105,10 +117,48 @@ class GameSandbox {
     this.spriteFileInput= document.getElementById('sprite-file-input');
     this.clearSandboxBtn= document.getElementById('clear-sandbox-btn');
 
+    // ── In-Game Pause & Resume Controller (Issue #50) ───────────
+    this.isPaused       = false;
+    this.pauseBtn       = document.getElementById('pause-btn');
+    this.pauseBtnIcon   = document.getElementById('pause-btn-icon');
+    this.pauseBtnText   = document.getElementById('pause-btn-text');
+    this.pauseOverlay   = document.getElementById('pause-overlay');
+    this.pauseDist      = document.getElementById('pause-dist');
+    this.pauseCoins     = document.getElementById('pause-coins');
+    this.pauseScore     = document.getElementById('pause-score');
+    this.pauseResumeBtn = document.getElementById('pause-resume-btn');
+    this.pauseRestartBtn= document.getElementById('pause-restart-btn');
+    this.pauseSoundBtn  = document.getElementById('pause-sound-btn');
+    this.pauseSoundIcon = document.getElementById('pause-sound-icon');
+    this.pauseSoundText = document.getElementById('pause-sound-text');
+
     this._raf = null;
     this._lastTime = 0;
 
+    // ── Issue #45: State Persistence ────────────────────────────
+    try {
+      const savedBiome = localStorage.getItem('spriteforge_pref_biome');
+      if (savedBiome && this.biomeSelect) {
+        this.biomeSelect.value = savedBiome;
+        this.renderer.setBiome(savedBiome);
+        if (this.hudBiome && this.biomeSelect.selectedIndex >= 0) {
+          this.hudBiome.textContent = this.biomeSelect.options[this.biomeSelect.selectedIndex].text;
+        }
+      }
+      const savedMuted = localStorage.getItem('spriteforge_pref_muted');
+      if (savedMuted !== null && this.audio) {
+        const isMuted = savedMuted === 'true';
+        this.audio.isMuted = isMuted;
+        if (this.muteBtn) {
+          this.muteBtn.textContent = isMuted ? '🔇 Unmute' : '🔊 Mute';
+          this.muteBtn.classList.toggle('muted', isMuted);
+        }
+        this._updatePauseSoundBtn();
+      }
+    } catch (_) {}
+
     this._initEvents();
+    this._initPauseController();
     this._initAssetShelf();
     this._initAssetBus();
     this._resize();
@@ -119,9 +169,13 @@ class GameSandbox {
 
   /* ── Events (Dual Control Scheme: Keyboard + Touch Pedals) ── */
   _initEvents() {
-    window.addEventListener('resize', () => this._resize());
-    window.addEventListener('keydown', e => { this.keys[e.code] = true;  this._onKeyDown(e); });
-    window.addEventListener('keyup',   e => { this.keys[e.code] = false; });
+    this._boundResize = () => this._resize();
+    this._boundKeyDown = e => { this.keys[e.code] = true;  this._onKeyDown(e); };
+    this._boundKeyUp = e => { this.keys[e.code] = false; };
+
+    window.addEventListener('resize', this._boundResize);
+    window.addEventListener('keydown', this._boundKeyDown);
+    window.addEventListener('keyup',   this._boundKeyUp);
 
     // Issue #44: Dedicated Spawn Controls
     this.spawnCarBtn?.addEventListener('click', () => this.spawnCar({ defaultCar: true }));
@@ -131,12 +185,10 @@ class GameSandbox {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const img = new Image();
-        img.onload = () => {
+        loadSafeImage(ev.target.result).then(img => {
           this.customSprite = img;
           this.spawnCar();
-        };
-        img.src = ev.target.result;
+        }).catch(err => console.error('Failed to load sprite file:', err));
       };
       reader.readAsDataURL(file);
     });
@@ -145,12 +197,15 @@ class GameSandbox {
     this.biomeSelect?.addEventListener('change', () => {
       this.renderer.setBiome(this.biomeSelect.value);
       if (this.hudBiome) this.hudBiome.textContent = this.biomeSelect.options[this.biomeSelect.selectedIndex].text;
+      try { localStorage.setItem('spriteforge_pref_biome', this.biomeSelect.value); } catch (_) {}
     });
 
     this.muteBtn?.addEventListener('click', () => {
       const muted = this.audio.toggleMute();
       this.muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
       this.muteBtn.classList.toggle('muted', muted);
+      this._updatePauseSoundBtn();
+      try { localStorage.setItem('spriteforge_pref_muted', muted); } catch (_) {}
     });
 
     this.restartBtn?.addEventListener('click', () => this._restart());
@@ -206,14 +261,134 @@ class GameSandbox {
     }
   }
 
+  /* ── In-Game Pause & Resume Controller (Issue #50) ─────────── */
+  _initPauseController() {
+    this.pauseBtn?.addEventListener('click', () => this.togglePause());
+    this.pauseResumeBtn?.addEventListener('click', () => this.resume());
+    this.pauseRestartBtn?.addEventListener('click', () => {
+      this.resume();
+      this._restart();
+    });
+    this.pauseSoundBtn?.addEventListener('click', () => {
+      const muted = this.audio.toggleMute();
+      if (this.muteBtn) {
+        this.muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+        this.muteBtn.classList.toggle('muted', muted);
+      }
+      this._updatePauseSoundBtn();
+      try { localStorage.setItem('spriteforge_pref_muted', muted); } catch (_) {}
+    });
+    this.pauseOverlay?.addEventListener('click', (e) => {
+      if (e.target === this.pauseOverlay) {
+        this.resume();
+      }
+    });
+  }
+
+  togglePause() {
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  pause() {
+    if (this._gameOver || this.car.crashed) return;
+    this.isPaused = true;
+
+    // Halt engine audio sound loops
+    this.audio.stopEngine?.();
+    this.audio.stopFuelAlert?.();
+
+    // Toggle button state
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.add('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '▶';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Resume';
+      this.pauseBtn.setAttribute('title', 'Resume Game [P / Esc]');
+    }
+
+    // Refresh Current Stats Preview
+    const dist  = Math.round(this.distanceMeters || 0);
+    const coins = this.car ? (this.car.coins || 0) : 0;
+    const score = Math.round((this.totalScore || 0) + dist);
+    if (this.pauseDist)  this.pauseDist.textContent  = `${dist} m`;
+    if (this.pauseCoins) this.pauseCoins.textContent = `${coins}`;
+    if (this.pauseScore) this.pauseScore.textContent = `${score} pts`;
+
+    this._updatePauseSoundBtn();
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = false;
+  }
+
+  resume() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this._lastTime = performance.now(); // Cache timestamp so dt does not jump
+
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.remove('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      this.pauseBtn.setAttribute('title', 'Pause Game [P / Esc]');
+    }
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+
+    // Restart engine audio if vehicle is active
+    if (this.hasVehicle && !this._gameOver && !this.car.crashed && this.car.fuel > 0) {
+      this.audio.startEngine?.();
+      if (this._fuelAlert) {
+        this.audio.startFuelAlert?.();
+      }
+    }
+  }
+
+  _updatePauseSoundBtn() {
+    const isMuted = this.audio ? this.audio.isMuted : false;
+    if (this.pauseSoundIcon) this.pauseSoundIcon.textContent = isMuted ? '🔇' : '🔊';
+    if (this.pauseSoundText) this.pauseSoundText.textContent = isMuted ? 'Unmute Sound' : 'Mute Sound';
+  }
+
   _onKeyDown(e) {
-    if (!this.hasVehicle) {
-      if (e.code === 'KeyR') { this.spawnCar({ defaultCar: true }); return; }
+    // Escape or KeyP: Instant Toggle Pause / Resume (Issue #50 Specification 4)
+    if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (e.code === 'Escape') {
+        if (this.assetShelf?.classList.contains('open')) {
+          return;
+        }
+        const infoModal = document.getElementById('info-modal');
+        if (infoModal && !infoModal.hidden) {
+          infoModal.hidden = true;
+          return;
+        }
+      }
+      e.preventDefault();
+      this.togglePause();
       return;
     }
 
-    // Instant restart run via 'R' key (Specification 1, Issue #33)
-    if (e.code === 'KeyR') { this._restart(); return; }
+    // KeyR: Instant Restart Run (Issue #50: clean restart while paused)
+    if (e.code === 'KeyR') {
+      if (this.isPaused) {
+        this.resume();
+      }
+      if (!this.hasVehicle) {
+        this.spawnCar({ defaultCar: true });
+      } else {
+        this._restart();
+      }
+      return;
+    }
+
+    if (this.isPaused) {
+      return;
+    }
+
+    if (!this.hasVehicle) {
+      return;
+    }
 
     // Space key: Car Jump Mechanic (Specification 1, Issue #49)
     if (e.code === 'Space') {
@@ -404,6 +579,11 @@ class GameSandbox {
 
   /* ── Main Loop ───────────────────────────────────────────────── */
   _loop(timestamp) {
+    if (this.isPaused) {
+      this._lastTime = timestamp; // Cache timestamp while suspended to avoid dt jump
+      this._raf = requestAnimationFrame(t => this._loop(t));
+      return;
+    }
     const dt = Math.min((timestamp - this._lastTime) / 1000, 0.05); // cap at 50ms
     this._lastTime = timestamp;
     this._update(dt);
@@ -641,6 +821,15 @@ class GameSandbox {
 
   /* ── Trigger crash / game over (Issue #33) ─────────────────── */
   _triggerCrash(reason) {
+    if (this.isPaused) {
+      this.isPaused = false;
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     const car = this.car;
     if (reason === 'fuel') {
       this._outOfFuel = true;
@@ -687,6 +876,16 @@ class GameSandbox {
   }
 
   clearSandbox() {
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     this.hasVehicle     = false;
     this.customSprite   = null;
     this.floatingPopups = [];
@@ -710,6 +909,16 @@ class GameSandbox {
   }
 
   _restart() {
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     this.hasVehicle = true;
     const car = this.car;
     car.vx = 0; car.vy = 0;
@@ -1042,7 +1251,7 @@ class GameSandbox {
     }
 
     // 3. Fault-tolerant storage event fallback
-    window.addEventListener('storage', (event) => {
+    this._boundStorage = (event) => {
       if (event.key === EVENT_KEY && event.newValue) {
         try {
           const data = JSON.parse(event.newValue);
@@ -1051,7 +1260,8 @@ class GameSandbox {
           }
         } catch (_) {}
       }
-    });
+    };
+    window.addEventListener('storage', this._boundStorage);
   }
 
   _handleIncomingAssetPayload(payload) {
@@ -1143,11 +1353,12 @@ class GameSandbox {
       closeShelf();
     });
 
-    document.addEventListener('keydown', (e) => {
+    this._boundShelfKeyDown = (e) => {
       if (e.key === 'Escape' && this.assetShelf?.classList.contains('open')) {
         closeShelf();
       }
-    });
+    };
+    document.addEventListener('keydown', this._boundShelfKeyDown);
 
     this.shelfClear?.addEventListener('click', () => {
       this.incomingAssets = [];
@@ -1257,9 +1468,7 @@ class GameSandbox {
    * respecting parallax depth, terrain ground offset, and sorting layer.
    */
   ingestSpriteToWorld(asset, preferredLayer = null) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    loadSafeImage(asset.imageUrl).then(img => {
       const meta = asset.metadata || {};
       const fw = meta.frame_width || img.naturalWidth || 128;
       const fh = meta.frame_height || img.naturalHeight || 128;
@@ -1295,17 +1504,14 @@ class GameSandbox {
         alpha: 1.4
       });
       this.audio?.playCoinPickup?.();
-    };
-    img.src = asset.imageUrl;
+    }).catch(err => console.error('Failed to ingest sprite to world:', err));
   }
 
   /**
    * Convert image to texture and skin active vehicle chassis with custom sprite.
    */
   ingestSpriteAsVehicle(asset) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    loadSafeImage(asset.imageUrl).then(img => {
       const meta = asset.metadata || {};
       const fw = meta.frame_width || img.naturalWidth || 128;
       const fh = meta.frame_height || img.naturalHeight || 128;
@@ -1327,8 +1533,7 @@ class GameSandbox {
         alpha: 1.4
       });
       this.audio?.playCoinPickup?.();
-    };
-    img.src = asset.imageUrl;
+    }).catch(err => console.error('Failed to ingest vehicle sprite:', err));
   }
 
   _drawWorldSprites(ctx, layerName, biome, gY, carSX) {
@@ -1396,6 +1601,28 @@ class GameSandbox {
 
       ctx.restore();
     }
+  }
+  destroy() {
+    if (this._raf) {
+      cancelAnimationFrame(this._raf);
+      this._raf = null;
+    }
+    window.removeEventListener('resize', this._boundResize);
+    window.removeEventListener('keydown', this._boundKeyDown);
+    window.removeEventListener('keyup', this._boundKeyUp);
+    if (this._boundStorage) window.removeEventListener('storage', this._boundStorage);
+    if (this._boundShelfKeyDown) document.removeEventListener('keydown', this._boundShelfKeyDown);
+    if (this.busChannel) {
+      this.busChannel.close();
+      this.busChannel = null;
+    }
+    this.audio?.destroy();
+    this.renderer?.destroy();
+    this.worldSprites = [];
+    this.incomingAssets = [];
+    this.coins = [];
+    this.fuelCans = [];
+    this.floatingPopups = [];
   }
 }
 

@@ -4,6 +4,28 @@
    ============================================================ */
 'use strict';
 
+/**
+ * Issue #45 — Cross-Origin Image Ingestion Helper
+ * Prevents canvas tainting (SecurityError) when reading image data
+ */
+function loadSafeImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err || new Error(`Failed to load image from ${url}`));
+    img.src = url;
+  });
+}
+if (typeof window !== 'undefined') {
+  window.loadSafeImage = loadSafeImage;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports.loadSafeImage = loadSafeImage;
+}
+
 const POLL_INTERVAL_MS = 1500;
 const STAGES = ['queued', 'generating', 'removing_background', 'processing', 'exporting', 'done'];
 const STAGE_LABELS = {
@@ -413,9 +435,7 @@ class SpriteAnimationPlayer {
     const columns = Number(metadata?.columns) || 4;
     const initialFps = Number(metadata?.fps) || 8;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    loadSafeImage(imageUrl).then(img => {
       const fw = Number(metadata?.frame_width) || Math.floor(img.naturalWidth / columns) || 128;
       const fh = Number(metadata?.frame_height) || Math.floor(img.naturalHeight / rows) || 128;
       const totalFrames = Number(metadata?.frame_count) || (rows * columns) || 4;
@@ -454,8 +474,9 @@ class SpriteAnimationPlayer {
         this.renderFrame(0);
         this.play();
       }
-    };
-    img.src = imageUrl;
+    }).catch(err => {
+      console.error('Failed to load sprite preview:', err);
+    });
   }
 
   renderActionTrackButtons() {

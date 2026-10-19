@@ -87,6 +87,8 @@ class Particle {
 class ParticleSystem {
   constructor() { this.particles = []; }
 
+  clear() { this.particles = []; }
+
   emit(x, y, opts = {}) {
     const count = opts.count ?? 1;
     for (let i = 0; i < count; i++) this.particles.push(new Particle(x, y, opts));
@@ -252,6 +254,15 @@ class BiomeParallaxRenderer {
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = h + 'px';
     this.ctx.scale(dpr, dpr);
+  }
+
+  destroy() {
+    this.particles?.clear();
+    this.ctx = null;
+    this.canvas = null;
+    this._stars = [];
+    this._rainDrops = [];
+    this._neonFlicker = {};
   }
 
   draw(cameraX) {

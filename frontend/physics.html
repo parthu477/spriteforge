@@ -103,6 +103,7 @@
         <span class="hint-chip">W / D / ↑ / → Gas / Air-Tilt</span>
         <span class="hint-chip">S / A / ↓ / ← Brake / Air-Tilt</span>
         <span class="hint-chip">Space Jump</span>
+        <span class="hint-chip">P / Esc Pause</span>
         <span class="hint-chip">R Restart</span>
         <span class="hint-chip">Shift+F Debug</span>
         <button type="button" id="toggle-info-btn" class="ctrl-btn btn-info" title="View features and guide">ℹ️ Info</button>
@@ -208,6 +209,52 @@
 
       <!-- Single game canvas -->
       <canvas id="pg-canvas" class="pg-canvas" aria-label="Physics sandbox — drive your vehicle over procedural terrain"></canvas>
+
+      <!-- Floating Pause / Resume Quick Toggle Button (Issue #50) -->
+      <button id="pg-pause-btn" class="pause-toggle-btn" title="Pause Game [P / Esc]" aria-label="Pause / Resume Game">
+        <span class="pause-icon" id="pg-pause-btn-icon">⏸</span>
+        <span class="pause-text" id="pg-pause-btn-text">Pause</span>
+      </button>
+
+      <!-- Glassmorphic Pause Overlay Menu (Issue #50) -->
+      <div class="pause-overlay" id="pg-pause-overlay" hidden>
+        <div class="pause-panel">
+          <div class="pause-badge">GAME SUSPENDED</div>
+          <h2 class="pause-title">Game Paused</h2>
+          <p class="pause-sub">Simulation frozen · Press Esc or P to resume</p>
+
+          <div class="pause-stats">
+            <div class="pause-stat">
+              <span class="pause-stat-label">📏 Distance reached</span>
+              <span class="pause-stat-val" id="pg-pause-dist">0 m</span>
+            </div>
+            <div class="pause-stat">
+              <span class="pause-stat-label">🪙 Coins collected</span>
+              <span class="pause-stat-val" id="pg-pause-coins">0</span>
+            </div>
+            <div class="pause-stat pause-stat-total">
+              <span class="pause-stat-label">⭐ Current Score</span>
+              <span class="pause-stat-val" id="pg-pause-score">0 pts</span>
+            </div>
+          </div>
+
+          <div class="pause-actions">
+            <button id="pg-pause-resume-btn" class="btn-pause-primary" title="Resume Game [P / Esc]">
+              <span class="btn-icon">▶</span> Resume Game
+            </button>
+            <button id="pg-pause-restart-btn" class="btn-pause-secondary" title="Restart Run [R]">
+              <span class="btn-icon">🔄</span> Restart Run <span class="btn-kbd-hint">[R]</span>
+            </button>
+            <button id="pg-pause-sound-btn" class="btn-pause-tertiary" title="Toggle Sound">
+              <span class="btn-icon" id="pg-pause-sound-icon">🔊</span>
+              <span id="pg-pause-sound-text">Mute Sound</span>
+            </button>
+            <a href="/" class="btn-pause-link" title="Change Car / Back to Studio">
+              <span class="btn-icon">🎨</span> Change Car / Back to Studio
+            </a>
+          </div>
+        </div>
+      </div>
 
       <!-- Game Over Summary Screen (Issue #33) -->
       <div class="crash-overlay" id="pg-crash-overlay" hidden>

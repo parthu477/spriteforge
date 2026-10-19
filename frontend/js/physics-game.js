@@ -5,6 +5,18 @@
    ============================================================ */
 'use strict';
 
+const loadSafeImage = (typeof window !== 'undefined' && window.loadSafeImage) ? window.loadSafeImage : function(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err || new Error(`Failed to load image from ${url}`));
+    img.src = url;
+  });
+};
+
 class PhysicsGame {
   /**
    * @param {string} canvasId — id of the single <canvas> element
@@ -143,7 +155,55 @@ class PhysicsGame {
     this.unreadIncomingCount = 0;
     this.dynamicBodies       = [];
 
+    // ── In-Game Pause & Resume Controller (Issue #50) ───────────
+    this.isPaused        = false;
+    this.pauseBtn        = document.getElementById('pg-pause-btn');
+    this.pauseBtnIcon    = document.getElementById('pg-pause-btn-icon');
+    this.pauseBtnText    = document.getElementById('pg-pause-btn-text');
+    this.pauseOverlay    = document.getElementById('pg-pause-overlay');
+    this.pauseDist       = document.getElementById('pg-pause-dist');
+    this.pauseCoins      = document.getElementById('pg-pause-coins');
+    this.pauseScore      = document.getElementById('pg-pause-score');
+    this.pauseResumeBtn  = document.getElementById('pg-pause-resume-btn');
+    this.pauseRestartBtn = document.getElementById('pg-pause-restart-btn');
+    this.pauseSoundBtn   = document.getElementById('pg-pause-sound-btn');
+    this.pauseSoundIcon  = document.getElementById('pg-pause-sound-icon');
+    this.pauseSoundText  = document.getElementById('pg-pause-sound-text');
+
+    // ── Issue #45: State Persistence ────────────────────────────
+    try {
+      const savedBiome = localStorage.getItem('spriteforge_pref_biome');
+      if (savedBiome) {
+        this.biomeId = savedBiome;
+        if (this.biomeSelect) this.biomeSelect.value = savedBiome;
+      }
+      const savedMuted = localStorage.getItem('spriteforge_pref_muted');
+      if (savedMuted !== null && this.audio) {
+        const isMuted = savedMuted === 'true';
+        this.audio.isMuted = isMuted;
+        if (this.muteBtn) {
+          this.muteBtn.textContent = isMuted ? '🔇 Unmute' : '🔊 Mute';
+          this.muteBtn.classList.toggle('muted', isMuted);
+        }
+        this._updatePauseSoundBtn();
+      }
+      const savedSeed = localStorage.getItem('spriteforge_pref_seed');
+      if (savedSeed) {
+        if (this.seedInput) this.seedInput.value = savedSeed;
+        const s = parseInt(savedSeed, 10);
+        if (Number.isFinite(s) && s > 0) {
+          this.terrain.reset({ seed: s });
+          this._spawnCollectibles();
+        }
+      }
+      const savedPreset = localStorage.getItem('spriteforge_pref_rigging_preset');
+      if (savedPreset) {
+        if (this.presetSelect) this.presetSelect.value = savedPreset;
+        this.chassis.setPreset(savedPreset);
+      }
+    } catch (_) {}
     this._initEvents();
+    this._initPauseController();
     this._initVehicleImporter();
     this._initAssetShelf();
     this._initAssetBus();
@@ -156,6 +216,7 @@ class PhysicsGame {
   async _initVehicleImporter() {
     this.presetSelect?.addEventListener('change', (e) => {
       this.chassis.setPreset(e.target.value);
+      try { localStorage.setItem('spriteforge_pref_rigging_preset', e.target.value); } catch (_) {}
     });
 
     this.vehicleSelect?.addEventListener('change', (e) => {
@@ -202,9 +263,7 @@ class PhysicsGame {
     const item = this.spriteGallery.find(s => s.name === name);
     if (!item) return;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    loadSafeImage(item.image_url).then(img => {
       const collider = scanSpriteAlphaCollider(img, item.metadata?.frame_width, item.metadata?.frame_height);
       this.chassis.setSprite(img, item.metadata || {});
       if (collider) {
@@ -216,8 +275,423 @@ class PhysicsGame {
         this.chassis._applyRigging();
       }
       this.spawnCar();
+    }).catch(err => console.error('Failed to load sprite by name:', err));
+  }
+
+  /* ── Real-Time Asset Integration Shelf & Hybrid Bus ────────── */
+  _initAssetBus() {
+    const CHANNEL_NAME = 'spriteforge_asset_bus';
+    const QUEUE_KEY = 'spriteforge_dispatched_assets';
+    const EVENT_KEY = 'spriteforge_bus_event';
+
+    // 1. Initial queue load from persistent FIFO localStorage queue
+    try {
+      const stored = localStorage.getItem(QUEUE_KEY);
+      if (stored) {
+        const queue = JSON.parse(stored);
+        if (Array.isArray(queue)) {
+          const relevant = queue.filter(item => item?.target === 'physics' || item?.target === 'both');
+          this.incomingAssets = relevant;
+          this.unreadIncomingCount = relevant.length;
+          this._updateShelfBadge();
+          this._renderShelfList();
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load persistent dispatched assets for Physics Sandbox:', err);
+    }
+
+    // 2. Real-time BroadcastChannel listener
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.busChannel = new BroadcastChannel(CHANNEL_NAME);
+        this.busChannel.onmessage = (event) => {
+          this._handleIncomingAssetPayload(event.data);
+        };
+      } catch (err) {
+        console.warn('BroadcastChannel initialization error in Physics Sandbox:', err);
+      }
+    }
+
+    // 3. Fault-tolerant storage event fallback
+    this._boundStorage = (event) => {
+      if (event.key === EVENT_KEY && event.newValue) {
+        try {
+          const data = JSON.parse(event.newValue);
+          if (data && data.payload) {
+            this._handleIncomingAssetPayload(data.payload);
+          }
+        } catch (_) {}
+      }
     };
-    img.src = item.image_url;
+    window.addEventListener('storage', this._boundStorage);
+  }
+
+  _handleIncomingAssetPayload(payload) {
+    if (!payload || payload.type !== 'ASSET_DISPATCH') return;
+    if (payload.target !== 'physics' && payload.target !== 'both') return;
+
+    const asset = payload.asset;
+    if (!asset || !asset.imageUrl) return;
+
+    // Deduplicate against existing items in shelf
+    const exists = this.incomingAssets.some(
+      item => item?.asset?.id === asset.id ||
+              (item?.asset?.name === asset.name && item?.asset?.timestamp === asset.timestamp)
+    );
+    if (exists) return;
+
+    this.incomingAssets.unshift(payload);
+    this.unreadIncomingCount++;
+    this._updateShelfBadge();
+    this._renderShelfList();
+
+    // Visual feedback in sandbox
+    this.audio?.playCoinPickup?.();
+    this._addPopup(this.chassis.pos.x, this.chassis.pos.y - 70, `📥 Dispatched: ${asset.name}!`, '#06b6d4');
+  }
+
+  _updateShelfBadge() {
+    if (!this.shelfBadge) return;
+    if (this.unreadIncomingCount > 0) {
+      this.shelfBadge.textContent = this.unreadIncomingCount;
+      this.shelfBadge.hidden = false;
+    } else {
+      this.shelfBadge.hidden = true;
+    }
+  }
+
+  _initAssetShelf() {
+    this.shelfBtn      = document.getElementById('pg-shelf-btn');
+    this.shelfBadge    = document.getElementById('pg-shelf-badge');
+    this.assetShelf    = document.getElementById('pg-asset-shelf');
+    this.shelfBackdrop = document.getElementById('pg-shelf-backdrop');
+    this.shelfClose    = document.getElementById('pg-shelf-close');
+    this.shelfList     = document.getElementById('pg-shelf-list');
+    this.shelfCountTag = document.getElementById('pg-shelf-count-tag');
+    this.shelfClear    = document.getElementById('pg-shelf-clear');
+
+    const openShelf = () => {
+      if (!this.assetShelf) return;
+      this.assetShelf.hidden = false;
+      if (this.shelfBackdrop) this.shelfBackdrop.hidden = false;
+      requestAnimationFrame(() => {
+        this.assetShelf.classList.add('open');
+      });
+      // Clear unread badge counter upon inspection
+      this.unreadIncomingCount = 0;
+      this._updateShelfBadge();
+      this._renderShelfList();
+    };
+
+    const closeShelf = () => {
+      if (!this.assetShelf) return;
+      this.assetShelf.classList.remove('open');
+      if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
+      setTimeout(() => {
+        if (!this.assetShelf.classList.contains('open')) {
+          this.assetShelf.hidden = true;
+        }
+      }, 350);
+    };
+
+    this.shelfBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.assetShelf?.classList.contains('open')) {
+        closeShelf();
+      } else {
+        openShelf();
+      }
+    });
+
+    this.shelfClose?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeShelf();
+    });
+
+    this.shelfBackdrop?.addEventListener('click', () => {
+      closeShelf();
+    });
+
+    this._boundShelfKeyDown = (e) => {
+      if (e.key === 'Escape' && this.assetShelf?.classList.contains('open')) {
+        closeShelf();
+      }
+    };
+    document.addEventListener('keydown', this._boundShelfKeyDown);
+
+    this.shelfClear?.addEventListener('click', () => {
+      this.incomingAssets = [];
+      this.unreadIncomingCount = 0;
+      this._updateShelfBadge();
+      this._renderShelfList();
+      try {
+        localStorage.removeItem('spriteforge_dispatched_assets');
+      } catch (_) {}
+    });
+  }
+
+  _renderShelfList() {
+    if (!this.shelfList) return;
+    if (this.shelfCountTag) {
+      this.shelfCountTag.textContent = `${this.incomingAssets.length} asset${this.incomingAssets.length === 1 ? '' : 's'}`;
+    }
+
+    if (!this.incomingAssets.length) {
+      this.shelfList.innerHTML = `
+        <div class="shelf-empty">
+          <span class="shelf-empty-icon">📦</span>
+          <p class="shelf-empty-title">No incoming assets yet</p>
+          <p class="shelf-empty-sub">Dispatch sprites from the <a href="/" target="_blank">Generator</a> using <strong>[ 🚀 Send to Physics Sandbox ]</strong></p>
+        </div>
+      `;
+      return;
+    }
+
+    this.shelfList.innerHTML = this.incomingAssets.map((item, idx) => {
+      const a = item.asset;
+      const meta = a.metadata || {};
+      const fw = meta.frame_width || 128;
+      const fh = meta.frame_height || 128;
+      const grid = `${meta.rows || 1}×${meta.columns || 1}`;
+      const timeStr = a.timestamp ? new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Recent';
+      const targetClass = item.target === 'both' ? 'target-both' : 'target-physics';
+      const targetName = item.target === 'both' ? 'Both' : 'Physics';
+
+      return `
+        <div class="shelf-item-card" data-idx="${idx}">
+          <div class="shelf-card-top">
+            <div class="shelf-card-thumb-wrap">
+              <img src="${a.imageUrl}" alt="${a.name}" class="shelf-card-thumb" crossorigin="anonymous" loading="lazy">
+            </div>
+            <div class="shelf-card-info">
+              <span class="shelf-card-name">${a.name}</span>
+              <span class="shelf-card-meta">${fw}×${fh}px · ${grid}</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="shelf-target-badge ${targetClass}">${targetName}</span>
+                <span class="shelf-card-time">${timeStr}</span>
+              </div>
+            </div>
+          </div>
+          <div class="shelf-card-actions">
+            <button type="button" class="btn-quick-ingest" data-idx="${idx}" title="Calculate tight collider and bind to active vehicle chassis">
+              ⚡ Quick Ingest
+            </button>
+            <button type="button" class="btn-card-subaction btn-rig-chassis" data-idx="${idx}" title="Bind custom collider & suspension to active chassis">
+              🚗 Rig Chassis
+            </button>
+            <button type="button" class="btn-card-subaction btn-spawn-body" data-idx="${idx}" title="Calculate collider & spawn as dynamic rigid body into simulation">
+              🧱 Spawn Rigid Body
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire actions
+    this.shelfList.querySelectorAll('.btn-quick-ingest').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.ingestSpriteToChassis(item.asset, true);
+      });
+    });
+
+    this.shelfList.querySelectorAll('.btn-rig-chassis').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.ingestSpriteToChassis(item.asset, false);
+      });
+    });
+
+    this.shelfList.querySelectorAll('.btn-spawn-body').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (item) this.spawnDynamicRigidBody(item.asset);
+      });
+    });
+  }
+
+  /**
+   * Ingest sprite texture, auto-calculate tight collider dimensions,
+   * mass, and suspension offset, and bind to the active vehicle chassis.
+   */
+  ingestSpriteToChassis(asset, shouldReset = false) {
+    loadSafeImage(asset.imageUrl).then(img => {
+      const collider = scanSpriteAlphaCollider(img, asset.metadata?.frame_width, asset.metadata?.frame_height);
+
+      this.chassis.setSprite(img, asset.metadata || {});
+      if (collider) {
+        this.chassis.hw = collider.hw;
+        this.chassis.hh = collider.hh;
+        this.chassis.mass = collider.mass;
+        this.chassis.wheelOffsetY = collider.wheelOffsetY;
+        this.chassis.inertia = this.chassis.mass * (collider.hw * collider.hw + collider.hh * collider.hh) / 3;
+        this.chassis._applyRigging();
+      }
+
+      this.hasVehicle = true;
+      if (shouldReset) {
+        this.chassis.reset(this.chassis.pos.x, this.terrain);
+      }
+
+      this._addPopup(this.chassis.pos.x, this.chassis.pos.y - 60, `⚡ INGESTED: ${asset.name}!`, '#00FF88');
+      this.audio?.playCoinPickup?.();
+
+      // Close shelf on Quick Ingest for seamless gameplay
+      if (shouldReset && this.assetShelf?.classList.contains('open')) {
+        this.assetShelf.classList.remove('open');
+        if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
+        setTimeout(() => { this.assetShelf.hidden = true; }, 350);
+      }
+    }).catch(err => console.error('Failed to ingest sprite to chassis:', err));
+  }
+
+  /**
+   * Auto-calculate tight bounding box collider and spawn as dynamic rigid body in the simulation.
+   */
+  spawnDynamicRigidBody(asset) {
+    loadSafeImage(asset.imageUrl).then(img => {
+      const collider = scanSpriteAlphaCollider(img, asset.metadata?.frame_width, asset.metadata?.frame_height);
+
+      const spawnX = this.chassis.pos.x + 90;
+      const spawnY = this.chassis.pos.y - 70;
+
+      const body = {
+        id: 'body_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        img,
+        name: asset.name,
+        metadata: asset.metadata || {},
+        pos: new Vec2(spawnX, spawnY),
+        vel: new Vec2(this.chassis.vel.x + 60, -140),
+        angle: 0,
+        angularVel: (Math.random() - 0.5) * 5,
+        hw: collider ? collider.hw * 0.7 : 24,
+        hh: collider ? collider.hh * 0.7 : 18,
+        mass: collider ? collider.mass * 0.5 : 150,
+        restitution: 0.45,
+        friction: 0.65,
+      };
+
+      this.dynamicBodies.push(body);
+      if (this.dynamicBodies.length > 20) {
+        this.dynamicBodies.shift();
+      }
+
+      this._addPopup(spawnX, spawnY - 30, `📦 SPAWNED: ${asset.name}!`, '#00E5FF');
+      this.audio?.playCoinPickup?.();
+    }).catch(err => console.error('Failed to spawn dynamic rigid body:', err));
+  }
+
+  _updateDynamicBodies(dt) {
+    if (!this.dynamicBodies || !this.dynamicBodies.length) return;
+
+    const gravity = 980;
+    const c = this.chassis;
+
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const b = this.dynamicBodies[i];
+
+      // Gravity
+      b.vel.y += gravity * dt;
+
+      // Integrate motion
+      b.pos.x += b.vel.x * dt;
+      b.pos.y += b.vel.y * dt;
+      b.angle += b.angularVel * dt;
+
+      // Terrain collision
+      const terrainY = this.terrain.heightAt(b.pos.x);
+      if (b.pos.y + b.hh >= terrainY) {
+        // Resolve ground penetration
+        b.pos.y = terrainY - b.hh;
+
+        // Terrain slope normal
+        const slope = this.terrain.slopeAt ? this.terrain.slopeAt(b.pos.x) : 0;
+        const normAngle = Math.atan(slope) - Math.PI / 2;
+        const nx = Math.cos(normAngle);
+        const ny = Math.sin(normAngle);
+
+        // Dot product velocity . normal
+        const vn = b.vel.x * nx + b.vel.y * ny;
+        if (vn < 0) {
+          b.vel.x -= (1 + b.restitution) * vn * nx;
+          b.vel.y -= (1 + b.restitution) * vn * ny;
+
+          // Friction along ground
+          b.vel.x *= Math.max(0, 1 - b.friction * dt * 5);
+          b.angularVel *= 0.88;
+        }
+
+        // Particle puff on hard bounce
+        if (Math.abs(b.vel.y) > 40 && this.particles) {
+          const sx = (b.pos.x - this.camera.worldLeft) * this.camera.zoom;
+          const sy = (b.pos.y + b.hh - this.camera.worldTop) * this.camera.zoom;
+          this.particles.emit(sx, sy, { count: 2, size: 3, decay: 0.05 });
+        }
+      }
+
+      // Interaction with player vehicle chassis
+      const dx = b.pos.x - c.pos.x;
+      const dy = b.pos.y - c.pos.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = b.hw + c.hw;
+      if (dist < minDist && dist > 0.001) {
+        const overlap = minDist - dist;
+        const pushX = (dx / dist) * overlap;
+        const pushY = (dy / dist) * overlap;
+        b.pos.x += pushX * 0.8;
+        b.pos.y += pushY * 0.8;
+        b.vel.x += c.vel.x * 0.4 + pushX * 15;
+        b.vel.y -= 50;
+        b.angularVel += (Math.random() - 0.5) * 6;
+      }
+    }
+  }
+
+  _drawDynamicBodies(ctx, camX, camY) {
+    if (!this.dynamicBodies || !this.dynamicBodies.length) return;
+
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const b = this.dynamicBodies[i];
+      const sx = b.pos.x - camX;
+      const sy = b.pos.y - camY;
+
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(b.angle);
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, b.hh + 2, b.hw * 0.9, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Render sprite texture pixelated
+      if (b.img && b.img.complete && b.img.naturalWidth > 0) {
+        ctx.imageSmoothingEnabled = false;
+        const sw = b.metadata?.frame_width || b.img.naturalWidth || 128;
+        const sh = b.metadata?.frame_height || b.img.naturalHeight || 64;
+        ctx.drawImage(b.img, 0, 0, sw, sh, -b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      } else {
+        ctx.fillStyle = '#8b5cf6';
+        ctx.fillRect(-b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      }
+
+      // Debug collider overlay
+      if (this.showDebug) {
+        ctx.strokeStyle = '#00FF88';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      }
+
+      ctx.restore();
+    }
   }
 
   /* ── Real-Time Asset Integration Shelf & Hybrid Bus ────────── */
@@ -642,18 +1116,26 @@ class PhysicsGame {
 
   /* ── Events (Dual Control Scheme: Keyboard + Touch Pedals) ──── */
   _initEvents() {
-    window.addEventListener('resize', () => this._resize());
-
-    // Keyboard controls
-    window.addEventListener('keydown', e => {
+    this._boundResize = () => this._resize();
+    this._boundKeyDown = e => {
       this.keys[e.code] = true;
       this._onKeyDown(e);
-    });
-
-    window.addEventListener('keyup', e => {
+    };
+    this._boundKeyUp = e => {
       this.keys[e.code] = false;
       this._onKeyUp(e);
-    });
+    };
+    this._boundDebugKeyDown = e => {
+      if (e.code === 'KeyF' && e.shiftKey) {
+        this.showDebug = !this.showDebug;
+        if (this.debugEl) this.debugEl.hidden = !this.showDebug;
+      }
+    };
+
+    window.addEventListener('resize', this._boundResize);
+    window.addEventListener('keydown', this._boundKeyDown);
+    window.addEventListener('keyup', this._boundKeyUp);
+    document.addEventListener('keydown', this._boundDebugKeyDown);
 
     // Issue #44: Dedicated Spawn Controls
     this.spawnCarBtn?.addEventListener('click', () => this.spawnCar({ defaultCar: true }));
@@ -663,12 +1145,10 @@ class PhysicsGame {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const img = new Image();
-        img.onload = () => {
+        loadSafeImage(ev.target.result).then(img => {
           this.chassis.setSprite(img, { rows: 1, columns: 1 });
           this.spawnCar();
-        };
-        img.src = ev.target.result;
+        }).catch(err => console.error('Failed to load sprite file:', err));
       };
       reader.readAsDataURL(file);
     });
@@ -683,11 +1163,14 @@ class PhysicsGame {
       const m = this.audio.toggleMute();
       this.muteBtn.textContent = m ? '🔇 Unmute' : '🔊 Mute';
       this.muteBtn.classList.toggle('muted', m);
+      this._updatePauseSoundBtn();
+      try { localStorage.setItem('spriteforge_pref_muted', m); } catch (_) {}
     });
 
     // Biome change
     this.biomeSelect?.addEventListener('change', () => {
       this.biomeId = this.biomeSelect.value;
+      try { localStorage.setItem('spriteforge_pref_biome', this.biomeSelect.value); } catch (_) {}
     });
 
     // New terrain seed button
@@ -696,6 +1179,7 @@ class PhysicsGame {
       const seed    = Number.isFinite(seedVal) && seedVal > 0 ? seedVal : (Date.now() & 0xFFFF);
       this.terrain.reset({ seed });
       this._spawnCollectibles();
+      try { localStorage.setItem('spriteforge_pref_seed', seed); } catch (_) {}
       if (this.hasVehicle) this._restart();
     });
 
@@ -776,26 +1260,130 @@ class PhysicsGame {
       jumpPedal.addEventListener('touchcancel', e => { e.preventDefault(); releaseJump(); }, { passive: false });
     }
 
-    // Debug toggle
-    document.addEventListener('keydown', e => {
-      if (e.code === 'KeyF' && e.shiftKey) {
-        this.showDebug = !this.showDebug;
-        if (this.debugEl) this.debugEl.hidden = !this.showDebug;
+  }
+
+  /* ── In-Game Pause & Resume Controller (Issue #50) ─────────── */
+  _initPauseController() {
+    this.pauseBtn?.addEventListener('click', () => this.togglePause());
+    this.pauseResumeBtn?.addEventListener('click', () => this.resume());
+    this.pauseRestartBtn?.addEventListener('click', () => {
+      this.resume();
+      this._restart();
+    });
+    this.pauseSoundBtn?.addEventListener('click', () => {
+      const muted = this.audio?.toggleMute();
+      if (this.muteBtn) {
+        this.muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+        this.muteBtn.classList.toggle('muted', muted);
+      }
+      this._updatePauseSoundBtn();
+      try { localStorage.setItem('spriteforge_pref_muted', muted); } catch (_) {}
+    });
+    this.pauseOverlay?.addEventListener('click', (e) => {
+      if (e.target === this.pauseOverlay) {
+        this.resume();
       }
     });
   }
 
+  togglePause() {
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  pause() {
+    if (this._gameOver || (this.chassis && this.chassis.crashed)) return;
+    this.isPaused = true;
+
+    this.audio?.stopEngine();
+    this.audio?.stopFuelAlert();
+
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.add('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '▶';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Resume';
+      this.pauseBtn.setAttribute('title', 'Resume Game [P / Esc]');
+    }
+
+    const dist  = Math.round(this.distanceMeters || 0);
+    const coins = this.coinsCollected || 0;
+    const score = Math.round(this.totalScore || 0);
+    if (this.pauseDist)  this.pauseDist.textContent  = `${dist} m`;
+    if (this.pauseCoins) this.pauseCoins.textContent = `${coins}`;
+    if (this.pauseScore) this.pauseScore.textContent = `${score} pts`;
+
+    this._updatePauseSoundBtn();
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = false;
+  }
+
+  resume() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this._lastTime = performance.now(); // Eliminate dt time-jump spike
+
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.remove('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      this.pauseBtn.setAttribute('title', 'Pause Game [P / Esc]');
+    }
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+
+    if (this.hasVehicle && !this._gameOver && !this.chassis.crashed && this.chassis.fuel > 0) {
+      this.audio?.startEngine();
+      if (this._fuelAlert) {
+        this.audio?.startFuelAlert();
+      }
+    }
+  }
+
+  _updatePauseSoundBtn() {
+    const isMuted = this.audio ? this.audio.isMuted : false;
+    if (this.pauseSoundIcon) this.pauseSoundIcon.textContent = isMuted ? '🔇' : '🔊';
+    if (this.pauseSoundText) this.pauseSoundText.textContent = isMuted ? 'Unmute Sound' : 'Mute Sound';
+  }
+
   _onKeyDown(e) {
-    if (!this.hasVehicle) {
-      if (e.code === 'KeyR') {
+    // Escape or KeyP: Instant Toggle Pause / Resume (Issue #50 Specification 4)
+    if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (e.code === 'Escape') {
+        if (this.assetShelf?.classList.contains('open')) {
+          return;
+        }
+        const infoModal = document.getElementById('info-modal');
+        if (infoModal && !infoModal.hidden) {
+          infoModal.hidden = true;
+          return;
+        }
+      }
+      e.preventDefault();
+      this.togglePause();
+      return;
+    }
+
+    // KeyR: Instant Restart Run (clean restart while paused)
+    if (e.code === 'KeyR') {
+      if (this.isPaused) {
+        this.resume();
+      }
+      if (!this.hasVehicle) {
         this.spawnCar({ defaultCar: true });
+      } else {
+        this._restart();
       }
       return;
     }
 
-    // Instant restart run via 'R' key (Specification 1)
-    if (e.code === 'KeyR') {
-      this._restart();
+    if (this.isPaused) {
+      return;
+    }
+
+    if (!this.hasVehicle) {
       return;
     }
 
@@ -963,6 +1551,11 @@ class PhysicsGame {
 
   /* ── Main Loop ───────────────────────────────────────────────── */
   _loop(timestamp) {
+    if (this.isPaused) {
+      this._lastTime = timestamp; // Cache timestamp while suspended to avoid dt jump
+      this._raf = requestAnimationFrame(t => this._loop(t));
+      return;
+    }
     const rawDt = (timestamp - this._lastTime) / 1000;
     const dt    = Math.min(rawDt, 0.033); // cap at ~30ms
     this._lastTime = timestamp;
@@ -1210,6 +1803,15 @@ class PhysicsGame {
 
   /* ── Trigger Game Over Summary (Specification 4) ──────────────── */
   _triggerGameOver(reason) {
+    if (this.isPaused) {
+      this.isPaused = false;
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     if (this._gameOver) return;
     this._gameOver = true;
     this.audio?.stopEngine();
@@ -1504,6 +2106,19 @@ class PhysicsGame {
     this.hasVehicle = false;
     this.chassis.setSprite(null);
     this.floatingPopups = [];
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
+    this.hasVehicle     = false;
+    this.customSprite   = null;
+    this.floatingPopups = [];
     this.distanceMeters = 0;
     this.coinsCollected = 0;
     this.stuntBonus = 0;
@@ -1531,6 +2146,16 @@ class PhysicsGame {
 
   /* ── Restart Run (Shortcut R or Try Again Button) ─────────────── */
   _restart() {
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     this.hasVehicle      = true;
     this.chassis.crashed = false;
     this.chassis.reset(200, this.terrain);
@@ -1560,9 +2185,27 @@ class PhysicsGame {
   }
 
   destroy() {
-    if (this._raf) cancelAnimationFrame(this._raf);
-    this.audio?.stopEngine();
-    this.audio?.stopFuelAlert();
+    if (this._raf) {
+      cancelAnimationFrame(this._raf);
+      this._raf = null;
+    }
+    window.removeEventListener('resize', this._boundResize);
+    window.removeEventListener('keydown', this._boundKeyDown);
+    window.removeEventListener('keyup', this._boundKeyUp);
+    if (this._boundStorage) window.removeEventListener('storage', this._boundStorage);
+    if (this._boundShelfKeyDown) document.removeEventListener('keydown', this._boundShelfKeyDown);
+    if (this._boundDebugKeyDown) document.removeEventListener('keydown', this._boundDebugKeyDown);
+    if (this.busChannel) {
+      this.busChannel.close();
+      this.busChannel = null;
+    }
+    this.audio?.destroy();
+    this.particles?.clear();
+    this.coins = [];
+    this.fuelCans = [];
+    this.floatingPopups = [];
+    this.dynamicBodies = [];
+    this.incomingAssets = [];
   }
 }
 

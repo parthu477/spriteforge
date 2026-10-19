@@ -461,4 +461,18 @@ body.physics-page {
   }
 }
 
+/* ── Issue #50: Pause Controller Physics Sandbox Enhancements ── */
+.pg-stage .pause-toggle-btn {
+  cursor: pointer !important;
+}
+
+.pg-stage .pause-overlay {
+  cursor: default !important;
+}
+
+.pg-stage .pause-actions button,
+.pg-stage .pause-actions a {
+  cursor: pointer !important;
+}
+
 
