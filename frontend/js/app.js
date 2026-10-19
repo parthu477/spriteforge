@@ -11,7 +11,12 @@
 function loadSafeImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    if (typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:')) {
+    const isSameOrigin = typeof url === 'string' && (
+      url.startsWith('/') ||
+      url.startsWith('./') ||
+      (typeof location !== 'undefined' && url.startsWith(location.origin))
+    );
+    if (!isSameOrigin && typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:')) {
       img.crossOrigin = 'anonymous';
     }
     img.onload = () => resolve(img);
@@ -27,6 +32,9 @@ function loadSafeImage(url) {
       }
     };
     img.src = url;
+    if (img.complete && img.naturalWidth > 0) {
+      resolve(img);
+    }
   });
 }
 if (typeof window !== 'undefined') {
@@ -432,7 +440,9 @@ class SpriteAnimationPlayer {
   }
 
   mount(imageUrl, metadata, name = '') {
-    if (!this.canvas || !this.ctx) return;
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    if (!this.ctx) return;
 
     this.pause();
 
@@ -707,8 +717,15 @@ function onJobDone(data) {
     duration: `${(data.duration_ms / 1000).toFixed(1)}s`,
   }, null, 2);
 
-  // Mount animation previewer (AC 21.1)
-  animationPlayer.mount(data.preview_url, data.metadata, data.metadata?.name);
+  // Mount animation previewer (AC 21.1) with fresh cache-busted URL
+  animationPlayer.mount(fullUrl, data.metadata, data.metadata?.name);
+
+  // Auto-open full sprite sheet details so user immediately sees both previews next to them
+  const sheetDetails = document.querySelector('.sheet-details');
+  if (sheetDetails) sheetDetails.open = true;
+
+  // Scroll preview into clear view
+  if (resultSection) resultSection.scrollTop = 0;
 
   rerollBtn.onclick = () => {
     const seed = Math.floor(Math.random() * 4294967295);

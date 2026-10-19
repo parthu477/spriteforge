@@ -154,9 +154,10 @@ def _run_job(
             if not cfg.FALLBACK_PROVIDER or cfg.FALLBACK_PROVIDER in (cfg.PROVIDER, "none", ""):
                 raise
             fallback = get_provider(cfg.FALLBACK_PROVIDER)
-            image = fallback.generate(positive, negative,
-                                      min(width, fallback.max_side),
-                                      min(height, fallback.max_side), seed)
+            scale = min(1.0, fallback.max_side / max(width, height))
+            fb_w = max(1, int(width * scale))
+            fb_h = max(1, int(height * scale))
+            image = fallback.generate(positive, negative, fb_w, fb_h, seed)
             provider_used = cfg.FALLBACK_PROVIDER
             model_used = fallback.model
 
