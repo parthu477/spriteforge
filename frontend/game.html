@@ -84,6 +84,7 @@
         <span class="hint-chip">Space Jump</span>
         <span class="hint-chip">P / Esc Pause</span>
         <span class="hint-chip">R Restart</span>
+        <button type="button" id="toggle-info-btn" class="ctrl-btn btn-info" title="View features and guide">ℹ️ Info</button>
       </div>
     </div>
 
@@ -263,35 +264,42 @@
       </button>
     </div>
 
-    <!-- Feature explainer cards -->
-    <section class="feature-cards">
-      <div class="feat-card">
-        <div class="feat-icon">🎨</div>
-        <h3>4 Biomes</h3>
-        <p>Countryside, Desert, Cyberpunk Neon City, and Moon — each with 4 parallax depth layers.</p>
+    <!-- Features & Info Modal Overlay (Issue #42) -->
+    <div id="info-modal" class="info-modal" hidden>
+      <div class="info-modal-content">
+        <div class="info-modal-header">
+          <h2 class="info-modal-title">🎨 Game Sandbox Features & Architecture</h2>
+          <button type="button" id="close-info-btn" class="btn-info-close" aria-label="Close guide">✕</button>
+        </div>
+        <section class="feature-cards">
+          <div class="feat-card">
+            <div class="feat-icon">🎨</div>
+            <h3>4 Biomes</h3>
+            <p>Countryside, Desert, Cyberpunk Neon City, and Moon — each with 4 parallax depth layers.</p>
+          </div>
+          <div class="feat-card">
+            <div class="feat-icon">✨</div>
+            <h3>Dynamic Particles</h3>
+            <p>Tire dirt spray, engine exhaust puffs, coin sparkle bursts, crash debris explosions.</p>
+          </div>
+          <div class="feat-card">
+            <div class="feat-icon">🎵</div>
+            <h3>Retro Audio FX</h3>
+            <p>Pure Web Audio API synthesizer — dynamic engine pitch, brake squeal, chiptune coin ping, crash impact.</p>
+          </div>
+          <div class="feat-card">
+            <div class="feat-icon">🪙</div>
+            <h3>Collectibles</h3>
+            <p>Gather coins for score and pick up fuel cans to keep your tank topped off.</p>
+          </div>
+        </section>
+        <div class="info-modal-footer">
+          <p>SpriteForge · Game Sandbox · Issue #34 · Multi-Biome Parallax + Retro Audio FX</p>
+        </div>
       </div>
-      <div class="feat-card">
-        <div class="feat-icon">✨</div>
-        <h3>Dynamic Particles</h3>
-        <p>Tire dirt spray, engine exhaust puffs, coin sparkle bursts, crash debris explosions.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon">🎵</div>
-        <h3>Retro Audio FX</h3>
-        <p>Pure Web Audio API synthesizer — dynamic engine pitch, brake squeal, chiptune coin ping, crash impact.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon">🪙</div>
-        <h3>Collectibles</h3>
-        <p>Gather coins for score and pick up fuel cans to keep your tank topped off.</p>
-      </div>
-    </section>
+    </div>
 
   </main>
-
-  <footer class="footer">
-    <p>SpriteForge · Game Sandbox · Issue #34 · Multi-Biome Parallax + Retro Audio FX</p>
-  </footer>
 
   <!-- Scripts -->
   <script src="/static/js/auth.js"></script>
@@ -301,6 +309,14 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       window._sandbox = new GameSandbox('sandbox-stage');
+
+      const infoModal = document.getElementById('info-modal');
+      document.getElementById('toggle-info-btn')?.addEventListener('click', () => {
+        if (infoModal) infoModal.hidden = !infoModal.hidden;
+      });
+      document.getElementById('close-info-btn')?.addEventListener('click', () => {
+        if (infoModal) infoModal.hidden = true;
+      });
     });
   </script>
 </body>

@@ -4,50 +4,71 @@
    ============================================================ */
 
 /* ── Page layout ─────────────────────────────────────────────── */
+/* ── Page layout ─────────────────────────────────────────────── */
 body.game-page {
   background: #0a0a12;
-  min-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
 }
 
 .game-main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 1.25rem 3rem;
-}
-
-/* ── Hero ────────────────────────────────────────────────────── */
-.game-hero {
-  text-align: center;
-  padding: 2.5rem 0 1.2rem;
-}
-
-.game-title {
-  font-family: 'Space Mono', monospace;
-  font-size: clamp(1.8rem, 4vw, 2.8rem);
-  font-weight: 700;
-  margin: 0 0 0.4rem;
-  line-height: 1.15;
-}
-
-.game-subtitle {
-  color: var(--text-muted, #94a3b8);
-  font-size: 0.95rem;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
   margin: 0;
-  letter-spacing: 0.02em;
+  padding: 0;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+body.game-page .navbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  height: 50px;
+  background: rgba(10, 10, 20, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ── Hero (Hidden in Full-Screen Studio Viewport) ────────────── */
+.game-hero {
+  display: none;
 }
 
 /* ── Controls bar ────────────────────────────────────────────── */
 .sandbox-controls-bar {
+  position: absolute;
+  top: 58px;
+  left: 16px;
+  right: 16px;
+  max-width: calc(100vw - 32px);
+  z-index: 30;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
   flex-wrap: wrap;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(18, 18, 32, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
-  padding: 0.75rem 1.2rem;
-  margin-bottom: 1rem;
-  backdrop-filter: blur(8px);
+  padding: 0.55rem 1rem;
+  margin-bottom: 0;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
 .ctrl-group {
@@ -167,26 +188,25 @@ body.game-page {
 
 /* ── Sandbox Stage ───────────────────────────────────────────── */
 .sandbox-stage {
-  position: relative;
-  width: 100%;
-  height: 480px;
-  border-radius: 18px;
+  position: absolute;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow:
-    0 0 0 1px rgba(139,92,246,0.15),
-    0 20px 60px rgba(0,0,0,0.5),
-    inset 0 1px 0 rgba(255,255,255,0.08);
+  border: none;
+  box-shadow: none;
   cursor: none;
   background: #0a0a1a;
+  z-index: 1;
 }
 
 .sandbox-canvas {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   display: block;
 }
 
@@ -196,8 +216,8 @@ body.game-page {
 /* ── HUD ─────────────────────────────────────────────────────── */
 .sandbox-hud {
   position: absolute;
-  top: 14px;
-  left: 14px;
+  top: 160px;
+  left: 16px;
   right: 140px;
   max-width: calc(100% - 150px);
   z-index: 10;
@@ -212,11 +232,13 @@ body.game-page {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  background: rgba(0,0,0,0.55);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 9px;
-  padding: 0.3rem 0.7rem;
-  backdrop-filter: blur(6px);
+  background: rgba(14, 14, 26, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 0.35rem 0.75rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .hud-icon { font-size: 0.9rem; }
@@ -615,6 +637,86 @@ body.game-page {
   border-color: rgba(139,92,246,0.6);
   transform: translateY(-2px);
 }
+/* ── Info Modal Overlay (Feature Explainer) ─────────────────── */
+.info-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(4, 4, 10, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.info-modal[hidden] {
+  display: none !important;
+}
+
+.info-modal-content {
+  background: rgba(18, 18, 32, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  max-width: 860px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1.75rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.info-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-modal-title {
+  font-family: 'Space Mono', monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.btn-info-close {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  transition: all 0.2s;
+}
+.btn-info-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.info-modal-footer {
+  text-align: center;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-family: 'Space Mono', monospace;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body.game-page .footer {
+  display: none;
+}
 
 /* ============================================================
    Real-Time Incoming Asset Shelf & Ingestion System
@@ -1012,6 +1114,7 @@ body.game-page {
   border-color: #ef4444;
 }
 
+
 /* ============================================================
    Issue #50: In-Game Pause & Resume Controller & Overlay Menu
    ============================================================ */
@@ -1325,5 +1428,6 @@ body.game-page {
     font-size: 1.5rem;
   }
 }
+
 
 

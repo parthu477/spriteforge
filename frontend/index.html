@@ -22,21 +22,24 @@
       <span class="brand-icon">⚡</span>
       <span class="brand-name">SpriteForge</span>
     </div>
-    <div style="display:flex;align-items:center;gap:1rem;">
+    <div style="display:flex;align-items:center;gap:0.75rem;">
       <a href="/game"    class="nav-health" style="text-decoration:none;font-size:0.85rem;" title="Biome Sandbox">🎮 Biome Sandbox</a>
       <a href="/physics" class="nav-health" style="text-decoration:none;font-size:0.85rem;" title="Physics Sandbox">🔩 Physics Sandbox</a>
+      <button type="button" id="toggle-gallery-btn" class="nav-health" style="text-decoration:none;font-size:0.85rem;cursor:pointer;background:rgba(139,92,246,0.12);border-color:rgba(139,92,246,0.3);color:#c4b5fd;" title="Open Sprite Gallery">📁 Gallery</button>
       <a href="/api/health" target="_blank" class="nav-health" id="health-indicator" title="API Health">● Live</a>
       <div class="auth-nav-container" id="auth-nav-container"></div>
     </div>
   </nav>
 
-  <main class="container">
-    <header class="hero">
-      <h1 class="hero-title">
-        <span class="gradient-text">AI Sprite Sheet</span><br>Generator
-      </h1>
-      <p class="hero-sub">Describe your character → get a game-ready animated sprite sheet in seconds.</p>
-    </header>
+  <main class="studio-viewport" id="studio-viewport">
+    <!-- Left Studio Dock: Controls & Generator Form -->
+    <aside class="generator-dock" id="generator-dock">
+      <header class="studio-header">
+        <h1 class="hero-title">
+          <span class="gradient-text">AI Sprite Sheet</span><br>Generator
+        </h1>
+        <p class="hero-sub">Describe your character → get a game-ready animated sprite sheet.</p>
+      </header>
 
     <section class="generator-card" aria-label="Sprite Generator">
       <form id="generate-form" novalidate>
@@ -144,6 +147,22 @@
         <div id="form-error" class="form-error" role="alert" hidden></div>
       </form>
     </section>
+
+    <footer class="studio-footer-note">
+      ⚡ SpriteForge Studio · Local GPU/CPU generation
+    </footer>
+  </aside>
+
+  <!-- Center Studio Stage: Live Canvas & Animation Previewer -->
+  <div class="studio-stage" id="studio-stage">
+    
+    <!-- Studio Idle Stage Placeholder -->
+    <div class="studio-empty-state" id="stage-placeholder">
+      <div class="empty-state-icon">⚡</div>
+      <h2 class="empty-state-title">SpriteForge Studio</h2>
+      <p class="empty-state-desc">Describe your character in the left studio dock and click <strong>Generate Sprite</strong> to see real-time animated preview here.</p>
+      <span class="empty-state-hint">100vw Responsive Studio Viewport Active</span>
+    </div>
 
     <!-- Job status / result -->
     <section id="result-section" class="result-section" hidden aria-live="polite">
@@ -326,22 +345,27 @@
         </div>
       </div>
     </section>
+  </div>
 
-    <!-- Gallery -->
-    <section class="gallery-section" id="gallery-section">
-      <div class="section-header">
-        <h2 class="section-title">Sprite Gallery</h2>
+  <!-- Slide-Out / Collapsible Sprite Gallery Drawer -->
+  <aside class="gallery-drawer" id="gallery-dock" aria-label="Sprite Gallery">
+    <div class="gallery-drawer-header">
+      <h2 class="section-title">📁 Sprite Gallery</h2>
+      <button type="button" id="close-gallery-btn" class="btn-drawer-close" aria-label="Close gallery">✕</button>
+    </div>
+    <section class="gallery-section" id="gallery-section" style="padding:0;margin:0;">
+      <div class="section-header" style="margin-bottom:0.75rem;">
         <button id="refresh-gallery" class="btn-icon-text" title="Refresh">↻ Refresh</button>
       </div>
       <div class="gallery-grid" id="gallery-grid">
         <p class="gallery-empty">No sprites yet — generate one above!</p>
       </div>
     </section>
-  </main>
+  </aside>
+</main>
 
-  <footer class="footer">
-    <p>SpriteForge · Built with FLUX.1 schnell · All generation local to your machine</p>
-  </footer>
+  <!-- Toast Notification Container for Real-time Dispatch Confirmations -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Toast Notification Container for Real-time Dispatch Confirmations -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>

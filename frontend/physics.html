@@ -106,6 +106,7 @@
         <span class="hint-chip">P / Esc Pause</span>
         <span class="hint-chip">R Restart</span>
         <span class="hint-chip">Shift+F Debug</span>
+        <button type="button" id="toggle-info-btn" class="ctrl-btn btn-info" title="View features and guide">ℹ️ Info</button>
       </div>
     </div>
 
@@ -191,6 +192,18 @@
         <div class="susp-row">
           <span class="susp-label">Front</span>
           <div class="susp-bar-track"><div class="susp-bar" id="pg-susp-front"></div></div>
+        </div>
+      </div>
+
+      <!-- Suspension legend overlay -->
+      <div class="pg-legend">
+        <div class="legend-row">
+          <span class="legend-swatch" style="background:#00FF88"></span>
+          <span>Suspension compression</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-swatch" style="background:#00FFFF"></span>
+          <span>Airborne indicator</span>
         </div>
       </div>
 
@@ -300,47 +313,40 @@
       </button>
     </div>
 
-    <!-- Suspension legend -->
-    <div class="pg-legend">
-      <div class="legend-row">
-        <span class="legend-swatch" style="background:#00FF88"></span>
-        <span>Suspension compression (green = normal, orange = hard, red = bottomed)</span>
-      </div>
-      <div class="legend-row">
-        <span class="legend-swatch" style="background:#00FFFF"></span>
-        <span>Airborne indicator</span>
+    <!-- Features & Info Modal Overlay (Issue #42) -->
+    <div id="info-modal" class="info-modal" hidden>
+      <div class="info-modal-content">
+        <div class="info-modal-header">
+          <h2 class="info-modal-title">⚙️ Physics Sandbox Guide & Architecture</h2>
+          <button type="button" id="close-info-btn" class="btn-info-close" aria-label="Close guide">✕</button>
+        </div>
+        <section class="feature-cards">
+          <div class="feat-card">
+            <div class="feat-icon">⛰️</div>
+            <h3>Procedural Terrain</h3>
+            <p>Infinite smooth hills using layered value noise (fBm). Seeded + slope-clamped for fair play.</p>
+          </div>
+          <div class="feat-card">
+            <div class="feat-icon">🔩</div>
+            <h3>Spring Suspension</h3>
+            <p>Hooke's law + damping per wheel. Visual coil spring, compression indicators, tyre slip heat.</p>
+          </div>
+          <div class="feat-card">
+            <div class="feat-icon">🎥</div>
+            <h3>Smart Camera</h3>
+            <p>Smooth lerp with velocity-based look-ahead. Dynamically zooms out at high speed.</p>
+          </div>
+          <div class="feat-card">
+            <div class="feat-icon">💨</div>
+            <h3>Mid-Air Control</h3>
+            <p>Q / E keys apply torque while airborne so you can balance before landing. Flip = crash!</p>
+          </div>
+        </section>
+        <div class="info-modal-footer">
+          <p>SpriteForge · Physics Sandbox · Issue #31 · Procedural Terrain + Spring Suspension Physics</p>
+        </div>
       </div>
     </div>
-
-    <!-- Feature cards -->
-    <section class="feature-cards">
-      <div class="feat-card">
-        <div class="feat-icon">⛰️</div>
-        <h3>Procedural Terrain</h3>
-        <p>Infinite smooth hills using layered value noise (fBm). Seeded + slope-clamped for fair play.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon">🔩</div>
-        <h3>Spring Suspension</h3>
-        <p>Hooke's law + damping per wheel. Visual coil spring, compression indicators, tyre slip heat.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon">🎥</div>
-        <h3>Smart Camera</h3>
-        <p>Smooth lerp with velocity-based look-ahead. Dynamically zooms out at high speed.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon">💨</div>
-        <h3>Mid-Air Control</h3>
-        <p>Q / E keys apply torque while airborne so you can balance before landing. Flip = crash!</p>
-      </div>
-    </section>
-
-  </main>
-
-  <footer class="footer">
-    <p>SpriteForge · Physics Sandbox · Issue #31 · Procedural Terrain + Spring Suspension Physics</p>
-  </footer>
 
   <!-- Script load order: dependencies first -->
   <script src="/static/js/auth.js"></script>
@@ -372,6 +378,14 @@
       requestAnimationFrame(updateSuspBars);
 
       window._physicsGame = new PhysicsGame('pg-canvas');
+
+      const infoModal = document.getElementById('info-modal');
+      document.getElementById('toggle-info-btn')?.addEventListener('click', () => {
+        if (infoModal) infoModal.hidden = !infoModal.hidden;
+      });
+      document.getElementById('close-info-btn')?.addEventListener('click', () => {
+        if (infoModal) infoModal.hidden = true;
+      });
     });
   </script>
 </body>
