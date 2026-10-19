@@ -198,7 +198,8 @@ body.game-page {
   position: absolute;
   top: 14px;
   left: 14px;
-  right: 14px;
+  right: 140px;
+  max-width: calc(100% - 150px);
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1010,4 +1011,319 @@ body.game-page {
   background: rgba(239, 68, 68, 0.15);
   border-color: #ef4444;
 }
+
+/* ============================================================
+   Issue #50: In-Game Pause & Resume Controller & Overlay Menu
+   ============================================================ */
+
+/* ── Top-Right Floating Quick Toggle Button ─────────────────── */
+.pause-toggle-btn {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1rem;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  color: #f1f5f9;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer !important;
+  user-select: none;
+  outline: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.pause-toggle-btn:hover {
+  background: rgba(18, 18, 36, 0.85);
+  border-color: rgba(56, 189, 248, 0.7);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.45), 0 4px 16px rgba(0, 0, 0, 0.5);
+  color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.pause-toggle-btn:active {
+  transform: translateY(0);
+}
+
+.pause-toggle-btn.is-paused {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.8);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.5), 0 4px 16px rgba(0, 0, 0, 0.5);
+  color: #38bdf8;
+}
+
+.pause-toggle-btn .pause-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.pause-toggle-btn .pause-text {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── Glassmorphic Pause Overlay Menu ────────────────────────── */
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 6, 14, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: default !important;
+  animation: pauseFadeIn 0.2s ease-out;
+}
+
+.pause-overlay[hidden] {
+  display: none !important;
+}
+
+@keyframes pauseFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+.pause-panel {
+  width: 90%;
+  max-width: 440px;
+  background: rgba(18, 18, 34, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 24px;
+  padding: 2.2rem 2.4rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65), 0 0 40px rgba(139, 92, 246, 0.25);
+  text-align: center;
+  animation: pausePop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pausePop {
+  from {
+    transform: scale(0.92) translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.pause-badge {
+  display: inline-block;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  margin-bottom: 0.8rem;
+  text-transform: uppercase;
+}
+
+.pause-title {
+  font-family: 'Space Mono', monospace;
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 0.35rem 0;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.pause-sub {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  margin: 0 0 1.6rem 0;
+}
+
+.pause-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: rgba(10, 10, 22, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.6rem;
+  text-align: left;
+}
+
+.pause-stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.pause-stat-label {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.pause-stat-val {
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.pause-stat-total {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 0.55rem;
+  margin-top: 0.2rem;
+}
+
+.pause-stat-total .pause-stat-label {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.pause-stat-total .pause-stat-val {
+  color: #38bdf8;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.pause-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.btn-pause-primary {
+  width: 100%;
+  padding: 0.85rem 1.4rem;
+  background: linear-gradient(135deg, #06b6d4, #3b82f6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  color: #ffffff;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.35);
+}
+
+.btn-pause-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(6, 182, 212, 0.55);
+  filter: brightness(1.1);
+}
+
+.btn-pause-secondary {
+  width: 100%;
+  padding: 0.75rem 1.2rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  color: #e2e8f0;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-pause-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-pause-tertiary {
+  width: 100%;
+  padding: 0.65rem 1.2rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #cbd5e1;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-pause-tertiary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.btn-pause-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  color: #94a3b8;
+  text-decoration: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  margin-top: 0.3rem;
+  cursor: pointer !important;
+  transition: color 0.2s;
+}
+
+.btn-pause-link:hover {
+  color: #38bdf8;
+  text-decoration: underline;
+}
+
+.pause-actions .btn-kbd-hint {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+@media (max-width: 640px) {
+  .pause-toggle-btn {
+    top: 12px;
+    right: 12px;
+    padding: 0.38rem 0.8rem;
+    font-size: 0.75rem;
+  }
+  .pause-panel {
+    padding: 1.6rem 1.4rem;
+    width: 92%;
+  }
+  .pause-title {
+    font-size: 1.5rem;
+  }
+}
+
 

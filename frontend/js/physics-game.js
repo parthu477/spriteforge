@@ -143,7 +143,23 @@ class PhysicsGame {
     this.unreadIncomingCount = 0;
     this.dynamicBodies       = [];
 
+    // ── In-Game Pause & Resume Controller (Issue #50) ───────────
+    this.isPaused        = false;
+    this.pauseBtn        = document.getElementById('pg-pause-btn');
+    this.pauseBtnIcon    = document.getElementById('pg-pause-btn-icon');
+    this.pauseBtnText    = document.getElementById('pg-pause-btn-text');
+    this.pauseOverlay    = document.getElementById('pg-pause-overlay');
+    this.pauseDist       = document.getElementById('pg-pause-dist');
+    this.pauseCoins      = document.getElementById('pg-pause-coins');
+    this.pauseScore      = document.getElementById('pg-pause-score');
+    this.pauseResumeBtn  = document.getElementById('pg-pause-resume-btn');
+    this.pauseRestartBtn = document.getElementById('pg-pause-restart-btn');
+    this.pauseSoundBtn   = document.getElementById('pg-pause-sound-btn');
+    this.pauseSoundIcon  = document.getElementById('pg-pause-sound-icon');
+    this.pauseSoundText  = document.getElementById('pg-pause-sound-text');
+
     this._initEvents();
+    this._initPauseController();
     this._initVehicleImporter();
     this._initAssetShelf();
     this._initAssetBus();
@@ -683,6 +699,7 @@ class PhysicsGame {
       const m = this.audio.toggleMute();
       this.muteBtn.textContent = m ? '🔇 Unmute' : '🔊 Mute';
       this.muteBtn.classList.toggle('muted', m);
+      this._updatePauseSoundBtn();
     });
 
     // Biome change
@@ -785,17 +802,128 @@ class PhysicsGame {
     });
   }
 
+  /* ── In-Game Pause & Resume Controller (Issue #50) ─────────── */
+  _initPauseController() {
+    this.pauseBtn?.addEventListener('click', () => this.togglePause());
+    this.pauseResumeBtn?.addEventListener('click', () => this.resume());
+    this.pauseRestartBtn?.addEventListener('click', () => {
+      this.resume();
+      this._restart();
+    });
+    this.pauseSoundBtn?.addEventListener('click', () => {
+      const muted = this.audio?.toggleMute();
+      if (this.muteBtn) {
+        this.muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+        this.muteBtn.classList.toggle('muted', muted);
+      }
+      this._updatePauseSoundBtn();
+      try { localStorage.setItem('spriteforge_pref_muted', muted); } catch (_) {}
+    });
+    this.pauseOverlay?.addEventListener('click', (e) => {
+      if (e.target === this.pauseOverlay) {
+        this.resume();
+      }
+    });
+  }
+
+  togglePause() {
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  pause() {
+    if (this._gameOver || (this.chassis && this.chassis.crashed)) return;
+    this.isPaused = true;
+
+    this.audio?.stopEngine();
+    this.audio?.stopFuelAlert();
+
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.add('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '▶';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Resume';
+      this.pauseBtn.setAttribute('title', 'Resume Game [P / Esc]');
+    }
+
+    const dist  = Math.round(this.distanceMeters || 0);
+    const coins = this.coinsCollected || 0;
+    const score = Math.round(this.totalScore || 0);
+    if (this.pauseDist)  this.pauseDist.textContent  = `${dist} m`;
+    if (this.pauseCoins) this.pauseCoins.textContent = `${coins}`;
+    if (this.pauseScore) this.pauseScore.textContent = `${score} pts`;
+
+    this._updatePauseSoundBtn();
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = false;
+  }
+
+  resume() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this._lastTime = performance.now(); // Eliminate dt time-jump spike
+
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.remove('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      this.pauseBtn.setAttribute('title', 'Pause Game [P / Esc]');
+    }
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+
+    if (this.hasVehicle && !this._gameOver && !this.chassis.crashed && this.chassis.fuel > 0) {
+      this.audio?.startEngine();
+      if (this._fuelAlert) {
+        this.audio?.startFuelAlert();
+      }
+    }
+  }
+
+  _updatePauseSoundBtn() {
+    const isMuted = this.audio ? this.audio.isMuted : false;
+    if (this.pauseSoundIcon) this.pauseSoundIcon.textContent = isMuted ? '🔇' : '🔊';
+    if (this.pauseSoundText) this.pauseSoundText.textContent = isMuted ? 'Unmute Sound' : 'Mute Sound';
+  }
+
   _onKeyDown(e) {
-    if (!this.hasVehicle) {
-      if (e.code === 'KeyR') {
+    // Escape or KeyP: Instant Toggle Pause / Resume (Issue #50 Specification 4)
+    if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (e.code === 'Escape') {
+        if (this.assetShelf?.classList.contains('open')) {
+          return;
+        }
+        const infoModal = document.getElementById('info-modal');
+        if (infoModal && !infoModal.hidden) {
+          infoModal.hidden = true;
+          return;
+        }
+      }
+      e.preventDefault();
+      this.togglePause();
+      return;
+    }
+
+    // KeyR: Instant Restart Run (clean restart while paused)
+    if (e.code === 'KeyR') {
+      if (this.isPaused) {
+        this.resume();
+      }
+      if (!this.hasVehicle) {
         this.spawnCar({ defaultCar: true });
+      } else {
+        this._restart();
       }
       return;
     }
 
-    // Instant restart run via 'R' key (Specification 1)
-    if (e.code === 'KeyR') {
-      this._restart();
+    if (this.isPaused) {
+      return;
+    }
+
+    if (!this.hasVehicle) {
       return;
     }
 
@@ -946,6 +1074,11 @@ class PhysicsGame {
 
   /* ── Main Loop ───────────────────────────────────────────────── */
   _loop(timestamp) {
+    if (this.isPaused) {
+      this._lastTime = timestamp; // Cache timestamp while suspended to avoid dt jump
+      this._raf = requestAnimationFrame(t => this._loop(t));
+      return;
+    }
     const rawDt = (timestamp - this._lastTime) / 1000;
     const dt    = Math.min(rawDt, 0.033); // cap at ~30ms
     this._lastTime = timestamp;
@@ -1193,6 +1326,15 @@ class PhysicsGame {
 
   /* ── Trigger Game Over Summary (Specification 4) ──────────────── */
   _triggerGameOver(reason) {
+    if (this.isPaused) {
+      this.isPaused = false;
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     if (this._gameOver) return;
     this._gameOver = true;
     this.audio?.stopEngine();
@@ -1487,6 +1629,19 @@ class PhysicsGame {
     this.hasVehicle = false;
     this.chassis.setSprite(null);
     this.floatingPopups = [];
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
+    this.hasVehicle     = false;
+    this.customSprite   = null;
+    this.floatingPopups = [];
     this.distanceMeters = 0;
     this.coinsCollected = 0;
     this.stuntBonus = 0;
@@ -1514,6 +1669,16 @@ class PhysicsGame {
 
   /* ── Restart Run (Shortcut R or Try Again Button) ─────────────── */
   _restart() {
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     this.hasVehicle      = true;
     this.chassis.crashed = false;
     this.chassis.reset(200, this.terrain);
