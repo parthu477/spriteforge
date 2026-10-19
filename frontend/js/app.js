@@ -15,7 +15,17 @@ function loadSafeImage(url) {
       img.crossOrigin = 'anonymous';
     }
     img.onload = () => resolve(img);
-    img.onerror = (err) => reject(err || new Error(`Failed to load image from ${url}`));
+    img.onerror = () => {
+      // Resilient fallback: If crossOrigin was rejected, retry without it
+      if (img.crossOrigin) {
+        const fallbackImg = new Image();
+        fallbackImg.onload = () => resolve(fallbackImg);
+        fallbackImg.onerror = (err) => reject(err || new Error(`Failed to load image from ${url}`));
+        fallbackImg.src = url;
+      } else {
+        reject(new Error(`Failed to load image from ${url}`));
+      }
+    };
     img.src = url;
   });
 }

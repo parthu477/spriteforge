@@ -537,3 +537,47 @@ class TestExportEndpoints:
         assert len(ase_data["frames"]) == 4
         assert ase_data["meta"]["app"] == "SpriteForge"
 
+
+class TestSpriteServingCORS:
+    def test_serve_sprite_cors_headers(self, client, monkeypatch, tmp_path):
+        from PIL import Image
+        from backend.config import cfg
+        monkeypatch.setattr(cfg, "ASSET_DIR", tmp_path)
+
+        img = Image.new("RGBA", (64, 64), (255, 0, 0, 255))
+        img.save(tmp_path / "test_car.png")
+
+        # GET request should include CORS headers
+        resp = client.get("/api/sprites/test_car.png")
+        assert resp.status_code == 200
+        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+        # OPTIONS preflight request
+        resp_options = client.options("/api/sprites/test_car.png")
+        assert resp_options.status_code in (200, 204)
+        assert resp_options.headers.get("Access-Control-Allow-Origin") == "*"
+
+    def test_list_sprites_excludes_aseprite_json(self, client, monkeypatch, tmp_path):
+        from backend.config import cfg
+        monkeypatch.setattr(cfg, "ASSET_DIR", tmp_path)
+
+        # Primary sprite metadata
+        meta = {"name": "car_primary", "image_file": "car_primary.png"}
+        (tmp_path / "car_primary.json").write_text(json.dumps(meta), encoding="utf-8")
+
+        # Secondary Aseprite export metadata
+        ase_meta = {"frames": {}, "meta": {"app": "SpriteForge"}}
+        (tmp_path / "car_primary_aseprite.json").write_text(json.dumps(ase_meta), encoding="utf-8")
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = "usr_test"
+            sess["username"] = "testuser"
+
+        resp = client.get("/api/sprites")
+        assert resp.status_code == 200
+        sprites = resp.get_json()
+        assert len(sprites) == 1
+        assert sprites[0]["name"] == "car_primary"
+        assert sprites[0]["image_url"] == "/api/sprites/car_primary.png"
+
+

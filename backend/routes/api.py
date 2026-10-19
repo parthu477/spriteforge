@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, send_from_directory, send_file, Response, current_app
+from flask import Blueprint, jsonify, request, send_from_directory, send_file, Response, current_app, make_response
 import datetime
 import io
 import json
@@ -317,15 +317,20 @@ def list_sprites():
     user_id = get_current_user_id()
     results = []
     for jf in sorted(cfg.ASSET_DIR.glob("*.json")):
+        if jf.name.endswith("_aseprite.json"):
+            continue
         try:
             import json as _j
             meta = _j.loads(jf.read_text(encoding="utf-8"))
             owner = meta.get("user_id")
             if owner and owner != user_id and not (current_app.config.get("TESTING") and user_id == "usr_test"):
                 continue
+            image_file = meta.get("image_file")
+            if not image_file:
+                continue
             results.append({
                 "name": meta.get("name", jf.stem),
-                "image_url": f"/api/sprites/{meta.get('image_file', '')}",
+                "image_url": f"/api/sprites/{image_file}",
                 "metadata": meta,
             })
         except Exception:
@@ -333,11 +338,23 @@ def list_sprites():
     return jsonify(results), 200
 
 
+@api_bp.after_request
+def add_cors_headers(response):
+    if request.path.startswith("/api/sprites"):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS, DELETE"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
 # ── GET /api/sprites/<file> ───────────────────────────────────
 
-@api_bp.route("/sprites/<path:filename>", methods=["GET"])
+@api_bp.route("/sprites/<path:filename>", methods=["GET", "OPTIONS"])
 def serve_sprite(filename: str):
     import re
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+
     if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,70}\.(png|tres|meta|gif|json)", filename):
         return jsonify({"error": "not_found"}), 404
     return send_from_directory(str(cfg.ASSET_DIR), filename)
