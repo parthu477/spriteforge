@@ -105,10 +105,26 @@ class GameSandbox {
     this.spriteFileInput= document.getElementById('sprite-file-input');
     this.clearSandboxBtn= document.getElementById('clear-sandbox-btn');
 
+    // ── In-Game Pause & Resume Controller (Issue #50) ───────────
+    this.isPaused       = false;
+    this.pauseBtn       = document.getElementById('pause-btn');
+    this.pauseBtnIcon   = document.getElementById('pause-btn-icon');
+    this.pauseBtnText   = document.getElementById('pause-btn-text');
+    this.pauseOverlay   = document.getElementById('pause-overlay');
+    this.pauseDist      = document.getElementById('pause-dist');
+    this.pauseCoins     = document.getElementById('pause-coins');
+    this.pauseScore     = document.getElementById('pause-score');
+    this.pauseResumeBtn = document.getElementById('pause-resume-btn');
+    this.pauseRestartBtn= document.getElementById('pause-restart-btn');
+    this.pauseSoundBtn  = document.getElementById('pause-sound-btn');
+    this.pauseSoundIcon = document.getElementById('pause-sound-icon');
+    this.pauseSoundText = document.getElementById('pause-sound-text');
+
     this._raf = null;
     this._lastTime = 0;
 
     this._initEvents();
+    this._initPauseController();
     this._initAssetShelf();
     this._initAssetBus();
     this._resize();
@@ -151,6 +167,7 @@ class GameSandbox {
       const muted = this.audio.toggleMute();
       this.muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
       this.muteBtn.classList.toggle('muted', muted);
+      this._updatePauseSoundBtn();
     });
 
     this.restartBtn?.addEventListener('click', () => this._restart());
@@ -206,14 +223,134 @@ class GameSandbox {
     }
   }
 
+  /* ── In-Game Pause & Resume Controller (Issue #50) ─────────── */
+  _initPauseController() {
+    this.pauseBtn?.addEventListener('click', () => this.togglePause());
+    this.pauseResumeBtn?.addEventListener('click', () => this.resume());
+    this.pauseRestartBtn?.addEventListener('click', () => {
+      this.resume();
+      this._restart();
+    });
+    this.pauseSoundBtn?.addEventListener('click', () => {
+      const muted = this.audio.toggleMute();
+      if (this.muteBtn) {
+        this.muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+        this.muteBtn.classList.toggle('muted', muted);
+      }
+      this._updatePauseSoundBtn();
+      try { localStorage.setItem('spriteforge_pref_muted', muted); } catch (_) {}
+    });
+    this.pauseOverlay?.addEventListener('click', (e) => {
+      if (e.target === this.pauseOverlay) {
+        this.resume();
+      }
+    });
+  }
+
+  togglePause() {
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  pause() {
+    if (this._gameOver || this.car.crashed) return;
+    this.isPaused = true;
+
+    // Halt engine audio sound loops
+    this.audio.stopEngine?.();
+    this.audio.stopFuelAlert?.();
+
+    // Toggle button state
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.add('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '▶';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Resume';
+      this.pauseBtn.setAttribute('title', 'Resume Game [P / Esc]');
+    }
+
+    // Refresh Current Stats Preview
+    const dist  = Math.round(this.distanceMeters || 0);
+    const coins = this.car ? (this.car.coins || 0) : 0;
+    const score = Math.round((this.totalScore || 0) + dist);
+    if (this.pauseDist)  this.pauseDist.textContent  = `${dist} m`;
+    if (this.pauseCoins) this.pauseCoins.textContent = `${coins}`;
+    if (this.pauseScore) this.pauseScore.textContent = `${score} pts`;
+
+    this._updatePauseSoundBtn();
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = false;
+  }
+
+  resume() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this._lastTime = performance.now(); // Cache timestamp so dt does not jump
+
+    if (this.pauseBtn) {
+      this.pauseBtn.classList.remove('is-paused');
+      if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+      if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      this.pauseBtn.setAttribute('title', 'Pause Game [P / Esc]');
+    }
+
+    if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+
+    // Restart engine audio if vehicle is active
+    if (this.hasVehicle && !this._gameOver && !this.car.crashed && this.car.fuel > 0) {
+      this.audio.startEngine?.();
+      if (this._fuelAlert) {
+        this.audio.startFuelAlert?.();
+      }
+    }
+  }
+
+  _updatePauseSoundBtn() {
+    const isMuted = this.audio ? this.audio.isMuted : false;
+    if (this.pauseSoundIcon) this.pauseSoundIcon.textContent = isMuted ? '🔇' : '🔊';
+    if (this.pauseSoundText) this.pauseSoundText.textContent = isMuted ? 'Unmute Sound' : 'Mute Sound';
+  }
+
   _onKeyDown(e) {
-    if (!this.hasVehicle) {
-      if (e.code === 'KeyR') { this.spawnCar({ defaultCar: true }); return; }
+    // Escape or KeyP: Instant Toggle Pause / Resume (Issue #50 Specification 4)
+    if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (e.code === 'Escape') {
+        if (this.assetShelf?.classList.contains('open')) {
+          return;
+        }
+        const infoModal = document.getElementById('info-modal');
+        if (infoModal && !infoModal.hidden) {
+          infoModal.hidden = true;
+          return;
+        }
+      }
+      e.preventDefault();
+      this.togglePause();
       return;
     }
 
-    // Instant restart run via 'R' key (Specification 1, Issue #33)
-    if (e.code === 'KeyR') { this._restart(); return; }
+    // KeyR: Instant Restart Run (Issue #50: clean restart while paused)
+    if (e.code === 'KeyR') {
+      if (this.isPaused) {
+        this.resume();
+      }
+      if (!this.hasVehicle) {
+        this.spawnCar({ defaultCar: true });
+      } else {
+        this._restart();
+      }
+      return;
+    }
+
+    if (this.isPaused) {
+      return;
+    }
+
+    if (!this.hasVehicle) {
+      return;
+    }
 
     // Space key: Car Jump Mechanic (Specification 1, Issue #49)
     if (e.code === 'Space') {
@@ -382,6 +519,11 @@ class GameSandbox {
 
   /* ── Main Loop ───────────────────────────────────────────────── */
   _loop(timestamp) {
+    if (this.isPaused) {
+      this._lastTime = timestamp; // Cache timestamp while suspended to avoid dt jump
+      this._raf = requestAnimationFrame(t => this._loop(t));
+      return;
+    }
     const dt = Math.min((timestamp - this._lastTime) / 1000, 0.05); // cap at 50ms
     this._lastTime = timestamp;
     this._update(dt);
@@ -619,6 +761,15 @@ class GameSandbox {
 
   /* ── Trigger crash / game over (Issue #33) ─────────────────── */
   _triggerCrash(reason) {
+    if (this.isPaused) {
+      this.isPaused = false;
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     const car = this.car;
     if (reason === 'fuel') {
       this._outOfFuel = true;
@@ -665,6 +816,16 @@ class GameSandbox {
   }
 
   clearSandbox() {
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     this.hasVehicle     = false;
     this.customSprite   = null;
     this.floatingPopups = [];
@@ -688,6 +849,16 @@ class GameSandbox {
   }
 
   _restart() {
+    if (this.isPaused) {
+      this.isPaused = false;
+      this._lastTime = performance.now();
+      if (this.pauseOverlay) this.pauseOverlay.hidden = true;
+      if (this.pauseBtn) {
+        this.pauseBtn.classList.remove('is-paused');
+        if (this.pauseBtnIcon) this.pauseBtnIcon.textContent = '⏸';
+        if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
+      }
+    }
     this.hasVehicle = true;
     const car = this.car;
     car.vx = 0; car.vy = 0;
