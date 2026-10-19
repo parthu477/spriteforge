@@ -20,6 +20,24 @@ class RetroAudioEngine {
 
     // Fuel alert interval
     this._fuelAlertTimer = null;
+
+    // Issue #45: Lifecycle listener bindings
+    this._boundPageHide = () => this.destroy();
+    this._boundVisibilityChange = () => {
+      if (document.hidden) {
+        if (this._ctx && this._ctx.state === 'running') {
+          try { this._ctx.suspend(); } catch (_) {}
+        }
+      } else {
+        if (this._ctx && this._ctx.state === 'suspended') {
+          try { this._ctx.resume(); } catch (_) {}
+        }
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', this._boundPageHide);
+      document.addEventListener('visibilitychange', this._boundVisibilityChange);
+    }
   }
 
   /* ── Init (lazy — needs user gesture) ─────────────────────── */
@@ -122,16 +140,39 @@ class RetroAudioEngine {
     this._engineNoiseGain.gain.setTargetAtTime(throttle * 0.06, now, 0.05);
   }
 
-  stopEngine() {
+  stopEngine(immediate = false) {
     if (!this._engineRunning) return;
     this._engineRunning = false;
-    const now = this._ctx.currentTime;
+    const ctx = this._ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    const cleanupNodes = () => {
+      try { this._engineOsc?.stop(); } catch(_) {}
+      try { this._engineNoise?.stop(); } catch(_) {}
+      try { this._engineOsc?.disconnect(); } catch(_) {}
+      try { this._engineFilter?.disconnect(); } catch(_) {}
+      try { this._engineGain?.disconnect(); } catch(_) {}
+      try { this._engineNoise?.disconnect(); } catch(_) {}
+      try { this._engineNoiseGain?.disconnect(); } catch(_) {}
+      try { this._engineFilter2?.disconnect(); } catch(_) {}
+      this._engineOsc = null;
+      this._engineNoise = null;
+      this._engineFilter = null;
+      this._engineGain = null;
+      this._engineNoiseGain = null;
+      this._engineFilter2 = null;
+    };
+
+    if (immediate) {
+      cleanupNodes();
+      return;
+    }
+
     if (this._engineGain)      this._engineGain.gain.linearRampToValueAtTime(0, now + 0.4);
     if (this._engineNoiseGain) this._engineNoiseGain.gain.linearRampToValueAtTime(0, now + 0.4);
     setTimeout(() => {
-      try { this._engineOsc?.stop();   } catch(_) {}
-      try { this._engineNoise?.stop(); } catch(_) {}
-      this._engineOsc = null; this._engineNoise = null;
+      cleanupNodes();
     }, 500);
   }
 
@@ -302,6 +343,34 @@ class RetroAudioEngine {
 
     osc.start(now);
     osc.stop(now + 0.24);
+  }
+
+  /* ── Full Teardown & Lifecycle Cleanup (Issue #45) ───────────── */
+  destroy() {
+    this.stopEngine(true);
+    this.stopFuelAlert();
+    if (this._master) {
+      try { this._master.disconnect(); } catch (_) {}
+      this._master = null;
+    }
+    if (this._ctx) {
+      try {
+        if (this._ctx.state !== 'closed') {
+          this._ctx.close();
+        }
+      } catch (_) {}
+      this._ctx = null;
+    }
+    if (typeof window !== 'undefined') {
+      if (this._boundPageHide) {
+        window.removeEventListener('pagehide', this._boundPageHide);
+        this._boundPageHide = null;
+      }
+      if (this._boundVisibilityChange) {
+        document.removeEventListener('visibilitychange', this._boundVisibilityChange);
+        this._boundVisibilityChange = null;
+      }
+    }
   }
 }
 

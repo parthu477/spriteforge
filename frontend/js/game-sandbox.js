@@ -6,6 +6,18 @@
    ============================================================ */
 'use strict';
 
+const loadSafeImage = (typeof window !== 'undefined' && window.loadSafeImage) ? window.loadSafeImage : function(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err || new Error(`Failed to load image from ${url}`));
+    img.src = url;
+  });
+};
+
 class GameSandbox {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
@@ -123,6 +135,28 @@ class GameSandbox {
     this._raf = null;
     this._lastTime = 0;
 
+    // ── Issue #45: State Persistence ────────────────────────────
+    try {
+      const savedBiome = localStorage.getItem('spriteforge_pref_biome');
+      if (savedBiome && this.biomeSelect) {
+        this.biomeSelect.value = savedBiome;
+        this.renderer.setBiome(savedBiome);
+        if (this.hudBiome && this.biomeSelect.selectedIndex >= 0) {
+          this.hudBiome.textContent = this.biomeSelect.options[this.biomeSelect.selectedIndex].text;
+        }
+      }
+      const savedMuted = localStorage.getItem('spriteforge_pref_muted');
+      if (savedMuted !== null && this.audio) {
+        const isMuted = savedMuted === 'true';
+        this.audio.isMuted = isMuted;
+        if (this.muteBtn) {
+          this.muteBtn.textContent = isMuted ? '🔇 Unmute' : '🔊 Mute';
+          this.muteBtn.classList.toggle('muted', isMuted);
+        }
+        this._updatePauseSoundBtn();
+      }
+    } catch (_) {}
+
     this._initEvents();
     this._initPauseController();
     this._initAssetShelf();
@@ -135,9 +169,13 @@ class GameSandbox {
 
   /* ── Events (Dual Control Scheme: Keyboard + Touch Pedals) ── */
   _initEvents() {
-    window.addEventListener('resize', () => this._resize());
-    window.addEventListener('keydown', e => { this.keys[e.code] = true;  this._onKeyDown(e); });
-    window.addEventListener('keyup',   e => { this.keys[e.code] = false; });
+    this._boundResize = () => this._resize();
+    this._boundKeyDown = e => { this.keys[e.code] = true;  this._onKeyDown(e); };
+    this._boundKeyUp = e => { this.keys[e.code] = false; };
+
+    window.addEventListener('resize', this._boundResize);
+    window.addEventListener('keydown', this._boundKeyDown);
+    window.addEventListener('keyup',   this._boundKeyUp);
 
     // Issue #44: Dedicated Spawn Controls
     this.spawnCarBtn?.addEventListener('click', () => this.spawnCar({ defaultCar: true }));
@@ -147,12 +185,10 @@ class GameSandbox {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const img = new Image();
-        img.onload = () => {
+        loadSafeImage(ev.target.result).then(img => {
           this.customSprite = img;
           this.spawnCar();
-        };
-        img.src = ev.target.result;
+        }).catch(err => console.error('Failed to load sprite file:', err));
       };
       reader.readAsDataURL(file);
     });
@@ -161,6 +197,7 @@ class GameSandbox {
     this.biomeSelect?.addEventListener('change', () => {
       this.renderer.setBiome(this.biomeSelect.value);
       if (this.hudBiome) this.hudBiome.textContent = this.biomeSelect.options[this.biomeSelect.selectedIndex].text;
+      try { localStorage.setItem('spriteforge_pref_biome', this.biomeSelect.value); } catch (_) {}
     });
 
     this.muteBtn?.addEventListener('click', () => {
@@ -168,6 +205,7 @@ class GameSandbox {
       this.muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
       this.muteBtn.classList.toggle('muted', muted);
       this._updatePauseSoundBtn();
+      try { localStorage.setItem('spriteforge_pref_muted', muted); } catch (_) {}
     });
 
     this.restartBtn?.addEventListener('click', () => this._restart());
@@ -1191,7 +1229,7 @@ class GameSandbox {
     }
 
     // 3. Fault-tolerant storage event fallback
-    window.addEventListener('storage', (event) => {
+    this._boundStorage = (event) => {
       if (event.key === EVENT_KEY && event.newValue) {
         try {
           const data = JSON.parse(event.newValue);
@@ -1200,7 +1238,8 @@ class GameSandbox {
           }
         } catch (_) {}
       }
-    });
+    };
+    window.addEventListener('storage', this._boundStorage);
   }
 
   _handleIncomingAssetPayload(payload) {
@@ -1292,11 +1331,12 @@ class GameSandbox {
       closeShelf();
     });
 
-    document.addEventListener('keydown', (e) => {
+    this._boundShelfKeyDown = (e) => {
       if (e.key === 'Escape' && this.assetShelf?.classList.contains('open')) {
         closeShelf();
       }
-    });
+    };
+    document.addEventListener('keydown', this._boundShelfKeyDown);
 
     this.shelfClear?.addEventListener('click', () => {
       this.incomingAssets = [];
@@ -1406,9 +1446,7 @@ class GameSandbox {
    * respecting parallax depth, terrain ground offset, and sorting layer.
    */
   ingestSpriteToWorld(asset, preferredLayer = null) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    loadSafeImage(asset.imageUrl).then(img => {
       const meta = asset.metadata || {};
       const fw = meta.frame_width || img.naturalWidth || 128;
       const fh = meta.frame_height || img.naturalHeight || 128;
@@ -1444,17 +1482,14 @@ class GameSandbox {
         alpha: 1.4
       });
       this.audio?.playCoinPickup?.();
-    };
-    img.src = asset.imageUrl;
+    }).catch(err => console.error('Failed to ingest sprite to world:', err));
   }
 
   /**
    * Convert image to texture and skin active vehicle chassis with custom sprite.
    */
   ingestSpriteAsVehicle(asset) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    loadSafeImage(asset.imageUrl).then(img => {
       const meta = asset.metadata || {};
       const fw = meta.frame_width || img.naturalWidth || 128;
       const fh = meta.frame_height || img.naturalHeight || 128;
@@ -1476,8 +1511,7 @@ class GameSandbox {
         alpha: 1.4
       });
       this.audio?.playCoinPickup?.();
-    };
-    img.src = asset.imageUrl;
+    }).catch(err => console.error('Failed to ingest vehicle sprite:', err));
   }
 
   _drawWorldSprites(ctx, layerName, biome, gY, carSX) {
@@ -1545,6 +1579,28 @@ class GameSandbox {
 
       ctx.restore();
     }
+  }
+  destroy() {
+    if (this._raf) {
+      cancelAnimationFrame(this._raf);
+      this._raf = null;
+    }
+    window.removeEventListener('resize', this._boundResize);
+    window.removeEventListener('keydown', this._boundKeyDown);
+    window.removeEventListener('keyup', this._boundKeyUp);
+    if (this._boundStorage) window.removeEventListener('storage', this._boundStorage);
+    if (this._boundShelfKeyDown) document.removeEventListener('keydown', this._boundShelfKeyDown);
+    if (this.busChannel) {
+      this.busChannel.close();
+      this.busChannel = null;
+    }
+    this.audio?.destroy();
+    this.renderer?.destroy();
+    this.worldSprites = [];
+    this.incomingAssets = [];
+    this.coins = [];
+    this.fuelCans = [];
+    this.floatingPopups = [];
   }
 }
 
