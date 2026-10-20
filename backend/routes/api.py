@@ -317,7 +317,10 @@ def stream_job(job_id: str):
 def list_sprites():
     user_id = get_current_user_id()
     results = []
-    for jf in sorted(cfg.ASSET_DIR.glob("*.json")):
+    # Sort files by modification time descending so newest sprites come first
+    json_files = sorted(cfg.ASSET_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    seen_names = set()
+    for jf in json_files:
         if jf.name.endswith("_aseprite.json"):
             continue
         try:
@@ -329,8 +332,12 @@ def list_sprites():
             image_file = meta.get("image_file")
             if not image_file:
                 continue
+            sprite_name = meta.get("name", jf.stem)
+            if sprite_name in seen_names:
+                continue
+            seen_names.add(sprite_name)
             results.append({
-                "name": meta.get("name", jf.stem),
+                "name": sprite_name,
                 "image_url": f"/api/sprites/{image_file}",
                 "metadata": meta,
             })

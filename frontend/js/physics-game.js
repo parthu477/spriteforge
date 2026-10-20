@@ -536,6 +536,7 @@ class PhysicsGame {
       }
 
       this.hasVehicle = true;
+      this.dynamicBodies = []; // Clear duplicate bodies so only the active player sprite appears
       if (shouldReset) {
         this.chassis.reset(this.chassis.pos.x, this.terrain);
       }
@@ -2095,6 +2096,7 @@ class PhysicsGame {
   /* ── Explicit Spawn & Clear Controls (Issue #44) ──────────────── */
   spawnCar(options = {}) {
     this.hasVehicle = true;
+    this.dynamicBodies = [];
     if (options.defaultCar) {
       this.chassis.setSprite(null);
       if (this.vehicleSelect) this.vehicleSelect.value = '';

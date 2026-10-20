@@ -586,11 +586,17 @@ class Chassis {
       ctx.ellipse(0, hh + 6, hw * 0.9, 6, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Render sprite frame pixelated
+      // Render single animated sprite frame pixelated (avoiding double/multi-frame drawing)
       ctx.imageSmoothingEnabled = false;
       const sw = s.fw;
       const sh = s.fh;
-      ctx.drawImage(s.img, 0, 0, sw, sh, -hw, -hh * 1.15, drawW, drawH);
+      const totalFrames = s.metadata?.frame_count || (s.metadata?.rows * s.metadata?.columns) || 1;
+      const fps = s.metadata?.fps || 8;
+      const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
+      const cols = s.metadata?.columns || totalFrames || 1;
+      const fx = (currentFrame % cols) * sw;
+      const fy = Math.floor(currentFrame / cols) * sh;
+      ctx.drawImage(s.img, fx, fy, sw, sh, -hw, -hh * 1.15, drawW, drawH);
       return;
     }
 
