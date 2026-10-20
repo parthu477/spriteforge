@@ -33,7 +33,11 @@ def _fatal(msg: str) -> None:
 
 def _resolve_asset_dir() -> Path:
     raw = os.environ.get("ASSET_DIR", "../assets/sprites").strip()
-    p = (Path(__file__).parent / raw).resolve()
+    raw_p = Path(raw)
+    if raw_p.is_absolute():
+        p = raw_p.resolve()
+    else:
+        p = (Path(__file__).parent / raw).resolve()
     try:
         p.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -98,8 +102,12 @@ class Config:
     @classmethod
     def validate(cls) -> None:
         """Fail-fast on startup.  Call once before serving traffic."""
-        # Security: refuse to bind externally (AC 16.3)
-        if cls.FLASK_HOST not in ("127.0.0.1", "localhost"):
+        # Security: refuse to bind externally by default (AC 16.3)
+        # Cloud environments (Render, container deployments) set RENDER or PORT and bind via 0.0.0.0
+        allowed_hosts = ("127.0.0.1", "localhost")
+        if os.environ.get("RENDER") or os.environ.get("PORT"):
+            allowed_hosts = ("127.0.0.1", "localhost", "0.0.0.0")
+        if cls.FLASK_HOST not in allowed_hosts:
             _fatal(
                 f"FLASK_HOST='{cls.FLASK_HOST}' would expose the server publicly. "
                 "Only 127.0.0.1 is allowed."

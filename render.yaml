@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: spriteforge
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn backend.app:create_app() --bind 0.0.0.0:$PORT
+    disk:
+      name: spriteforge-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ASSET_DIR
+        value: /var/data/sprites
+      - key: USERS_DB_PATH
+        value: /var/data/users.db
+      - key: PROVIDER
+        value: cloudflare
+      - key: FALLBACK_PROVIDER
+        value: mock
+      - key: CF_ACCOUNT_ID
+        sync: false
+      - key: CF_API_TOKEN
+        sync: false
+      - key: CF_MODEL_ID
+        value: "@cf/black-forest-labs/flux-1-schnell"
+      - key: CF_STEPS
+        value: "4"
+      - key: FLASK_HOST
+        value: 0.0.0.0
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
