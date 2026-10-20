@@ -68,35 +68,6 @@ def game_css():
     return send_from_directory(str(_frontend / "css"), "game.css")
 
 
-# ── Issue #31: Physics Sandbox page ───────────────────────────
-@ui_bp.route("/physics")
-@ui_login_required
-def physics():
-    """Serve the 2D procedural terrain + spring suspension physics sandbox (Issue #31)."""
-    return send_from_directory(str(_frontend), "physics.html")
-
-
-# ── Static routes for Issue #31 JS/CSS files ─────────────────
-@ui_bp.route("/static/js/terrain-engine.js")
-def terrain_engine_js():
-    return send_from_directory(str(_frontend / "js"), "terrain-engine.js")
-
-
-@ui_bp.route("/static/js/physics-engine.js")
-def physics_engine_js():
-    return send_from_directory(str(_frontend / "js"), "physics-engine.js")
-
-
-@ui_bp.route("/static/js/physics-game.js")
-def physics_game_js():
-    return send_from_directory(str(_frontend / "js"), "physics-game.js")
-
-
-@ui_bp.route("/static/css/physics-game.css")
-def physics_game_css():
-    return send_from_directory(str(_frontend / "css"), "physics-game.css")
-
-
 # ── Static route for Issue #47 Auth JS ───────────────────────
 @ui_bp.route("/static/js/auth.js")
 def auth_js():

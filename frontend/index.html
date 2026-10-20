@@ -24,7 +24,6 @@
     </div>
     <div style="display:flex;align-items:center;gap:0.75rem;">
       <a href="/game"    class="nav-health" style="text-decoration:none;font-size:0.85rem;" title="Biome Sandbox">🎮 Biome Sandbox</a>
-      <a href="/physics" class="nav-health" style="text-decoration:none;font-size:0.85rem;" title="Physics Sandbox">🔩 Physics Sandbox</a>
       <button type="button" id="toggle-gallery-btn" class="nav-health" style="text-decoration:none;font-size:0.85rem;cursor:pointer;background:rgba(139,92,246,0.12);border-color:rgba(139,92,246,0.3);color:#c4b5fd;" title="Open Sprite Gallery">📁 Gallery</button>
       <a href="/api/health" target="_blank" class="nav-health" id="health-indicator" title="API Health">● Live</a>
       <div class="auth-nav-container" id="auth-nav-container"></div>
@@ -319,8 +318,7 @@
             </div>
           </div>
           <button id="reroll-btn" class="btn-secondary">🎲 Re-roll</button>
-          <!-- Issue #32: 1-Click Test Drive in Game -->
-          <a id="test-drive-btn" class="btn-secondary btn-drive" href="/physics" target="_blank" title="Test drive this vehicle in the 2D Physics Sandbox">
+          <a id="test-drive-btn" class="btn-secondary btn-drive" href="/game" target="_blank" title="Test drive this vehicle in the Biome Sandbox">
             🚗 Play in Game
           </a>
         </div>
@@ -329,17 +327,9 @@
         <div class="dispatch-toolbar" id="dispatch-toolbar">
           <span class="dispatch-label">⚡ Real-Time Sandbox Dispatch:</span>
           <div class="dispatch-buttons">
-            <button type="button" class="btn-dispatch btn-dispatch-physics" id="dispatch-physics-btn" title="Dispatch sprite in real-time to Physics Sandbox (/physics)">
-              <span class="dispatch-icon">🚀</span>
-              <span class="dispatch-text">Send to Physics Sandbox</span>
-            </button>
             <button type="button" class="btn-dispatch btn-dispatch-biome" id="dispatch-biome-btn" title="Dispatch sprite in real-time to Biome Sandbox (/game)">
               <span class="dispatch-icon">🎮</span>
               <span class="dispatch-text">Send to Biome Sandbox</span>
-            </button>
-            <button type="button" class="btn-dispatch btn-dispatch-both" id="dispatch-both-btn" title="Dispatch sprite in real-time to both Sandboxes">
-              <span class="dispatch-icon">⚡</span>
-              <span class="dispatch-text">Send to Both</span>
             </button>
           </div>
         </div>
@@ -370,7 +360,7 @@
   <!-- Toast Notification Container for Real-time Dispatch Confirmations -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-  <script src="/static/js/auth.js?v=1.3"></script>
-  <script src="/static/js/app.js?v=1.3"></script>
+  <script src="/static/js/auth.js?v=1.4"></script>
+  <script src="/static/js/app.js?v=1.4"></script>
 </body>
 </html>

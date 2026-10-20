@@ -250,6 +250,7 @@ function startSSE(jobId) {
   activeEventSource = es;
 
   es.onmessage = (event) => {
+    if (isDoneOrFailed) return; // ignore any events already queued by the browser after done/failed
     try {
       const data = JSON.parse(event.data);
       updateProgress(data);
@@ -692,7 +693,7 @@ function onJobDone(data) {
   resultCard.hidden = false;
   const testDriveBtn = document.getElementById('test-drive-btn');
   if (testDriveBtn && data.metadata?.name) {
-    testDriveBtn.href = `/physics?sprite=${encodeURIComponent(data.metadata.name)}`;
+    testDriveBtn.href = `/game?sprite=${encodeURIComponent(data.metadata.name)}`;
   }
   const fullUrl = data.preview_url + '?t=' + Date.now();
   resultImg.src = fullUrl;
@@ -799,10 +800,8 @@ async function loadGallery() {
         <div class="gallery-item-footer">
           <span class="gallery-item-name">${s.name}</span>
           <div class="gallery-item-actions">
-            <button type="button" class="gallery-btn dispatch-physics" data-name="${s.name}" title="🚀 Send to Physics Sandbox">🚀</button>
             <button type="button" class="gallery-btn dispatch-biome" data-name="${s.name}" title="🎮 Send to Biome Sandbox">🎮</button>
-            <button type="button" class="gallery-btn dispatch-both" data-name="${s.name}" title="⚡ Send to Both Sandboxes">⚡</button>
-            <a href="/physics?sprite=${encodeURIComponent(s.name)}" target="_blank" class="gallery-btn drive" title="Drive in Physics Sandbox">🚗</a>
+            <a href="/game?sprite=${encodeURIComponent(s.name)}" target="_blank" class="gallery-btn drive" title="Drive in Biome Sandbox">🚗</a>
             <button class="gallery-btn reroll-gallery" title="Re-roll">🎲</button>
             <button class="gallery-btn delete" title="Delete">🗑</button>
           </div>
@@ -811,42 +810,12 @@ async function loadGallery() {
     `).join('');
 
     // Wire real-time dispatch buttons on each gallery item
-    galleryGrid.querySelectorAll('.gallery-btn.dispatch-physics').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sprite = sprites.find(s => s.name === btn.dataset.name);
-        if (!sprite) return;
-        dispatchSpriteAsset('physics', {
-          id: sprite.name + '_' + Date.now(),
-          name: sprite.name,
-          imageUrl: sprite.image_url,
-          metadata: sprite.metadata || {},
-          timestamp: Date.now(),
-        });
-      });
-    });
-
     galleryGrid.querySelectorAll('.gallery-btn.dispatch-biome').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const sprite = sprites.find(s => s.name === btn.dataset.name);
         if (!sprite) return;
         dispatchSpriteAsset('biome', {
-          id: sprite.name + '_' + Date.now(),
-          name: sprite.name,
-          imageUrl: sprite.image_url,
-          metadata: sprite.metadata || {},
-          timestamp: Date.now(),
-        });
-      });
-    });
-
-    galleryGrid.querySelectorAll('.gallery-btn.dispatch-both').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sprite = sprites.find(s => s.name === btn.dataset.name);
-        if (!sprite) return;
-        dispatchSpriteAsset('both', {
           id: sprite.name + '_' + Date.now(),
           name: sprite.name,
           imageUrl: sprite.image_url,
@@ -876,7 +845,7 @@ async function loadGallery() {
         closeExportMenu();
         const testDriveBtn = document.getElementById('test-drive-btn');
         if (testDriveBtn) {
-          testDriveBtn.href = `/physics?sprite=${encodeURIComponent(sprite.name)}`;
+          testDriveBtn.href = `/game?sprite=${encodeURIComponent(sprite.name)}`;
         }
         statusSpinner.style.display = 'none';
         statusText.textContent = `Previewing: ${sprite.name}`;
@@ -1041,7 +1010,7 @@ const MAX_QUEUE_ITEMS = 50;
 
 /**
  * Dispatch an asset to open or future sandboxes via BroadcastChannel + storage fallback.
- * @param {'physics'|'biome'|'both'} target
+ * @param {'biome'} target
  * @param {Object} asset
  */
 function dispatchSpriteAsset(target, asset) {
@@ -1105,8 +1074,8 @@ function dispatchSpriteAsset(target, asset) {
   }
 
   // 4. Animated Toast Notification
-  const targetName = target === 'both' ? 'Both Sandboxes' : target === 'physics' ? 'Physics Sandbox' : 'Biome Sandbox';
-  const icon = target === 'both' ? '⚡' : target === 'physics' ? '🚀' : '🎮';
+  const targetName = 'Biome Sandbox';
+  const icon = '🎮';
   showToast(`Dispatched "${payload.asset.name}" to ${targetName}!`, 'success', icon);
 }
 
@@ -1157,17 +1126,7 @@ function showToast(message, type = 'success', icon = '🚀') {
 }
 
 // ── Wire Result Card Dispatch Buttons ──────────────────────────
-const dispatchPhysicsBtn = document.getElementById('dispatch-physics-btn');
-const dispatchBiomeBtn   = document.getElementById('dispatch-biome-btn');
-const dispatchBothBtn    = document.getElementById('dispatch-both-btn');
-
-dispatchPhysicsBtn?.addEventListener('click', () => {
-  if (!currentActiveSprite || !currentActiveSprite.imageUrl) {
-    showToast('Generate or select a sprite first!', 'warning', '⚠️');
-    return;
-  }
-  dispatchSpriteAsset('physics', currentActiveSprite);
-});
+const dispatchBiomeBtn = document.getElementById('dispatch-biome-btn');
 
 dispatchBiomeBtn?.addEventListener('click', () => {
   if (!currentActiveSprite || !currentActiveSprite.imageUrl) {
@@ -1175,14 +1134,6 @@ dispatchBiomeBtn?.addEventListener('click', () => {
     return;
   }
   dispatchSpriteAsset('biome', currentActiveSprite);
-});
-
-dispatchBothBtn?.addEventListener('click', () => {
-  if (!currentActiveSprite || !currentActiveSprite.imageUrl) {
-    showToast('Generate or select a sprite first!', 'warning', '⚠️');
-    return;
-  }
-  dispatchSpriteAsset('both', currentActiveSprite);
 });
 
 toggleGalleryBtn?.addEventListener('click', () => {

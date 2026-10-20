@@ -15,7 +15,7 @@ _repo_root = str(Path(__file__).resolve().parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from flask import Flask
+from flask import Flask, request
 
 from backend.config import cfg
 from backend.logging_setup import setup_logging
@@ -49,6 +49,19 @@ def create_app() -> Flask:
     app.secret_key = cfg.SECRET_KEY
     app.config["MAX_CONTENT_LENGTH"] = 4 * 1024  # 4 KB request limit
     app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+    @app.after_request
+    def no_cache_static(response):
+        """Dev-mode: never let the browser cache our pages/JS/CSS, so every code
+        change is picked up on the next reload instead of silently serving a stale
+        cached copy (HTML included — not just /static/*)."""
+        if request.path.startswith("/api/sprites/"):
+            return response  # served images may still cache; everything else must not
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
 
     # Backward compatibility for legacy static paths

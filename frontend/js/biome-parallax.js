@@ -245,6 +245,11 @@ class BiomeParallaxRenderer {
     }));
   }
 
+  setBiome(key) {
+    const biome = BIOMES[key];
+    if (biome) this.currentBiome = biome;
+  }
+
   resize(w, h) {
     const dpr = window.devicePixelRatio || 1;
     this.width = w;

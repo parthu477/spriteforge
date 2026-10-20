@@ -224,11 +224,13 @@ class MockProvider:
                     draw.polygon([(cx - ship_w // 4, sy + ship_h * 5 // 6), (cx - ship_w // 2, sy + ship_h + 8), (cx, sy + ship_h * 5 // 6)], fill=(50, 50, 70))
                     continue
 
-                # Row 0: Idle (subtle bob)
+                # Row 0: Idle (subtle bob) — but a single-row (non multi-action) sheet
+                #         IS the walk cycle, so treat rows==1 as walking too.
                 # Row 1: Walk (leg swing)
                 # Row 2: Attack (thrust / slash arm)
                 # Row 3: Hurt (recoil tilt)
-                bob = int(math.sin(c / cols * math.pi * 2) * 2) if r == 0 else 0
+                is_walk_row = (rows == 1) or (r == 1)
+                bob = int(math.sin(c / cols * math.pi * 2) * 2) if (r == 0 and not is_walk_row) else 0
                 recoil = 4 if r == 3 else 0
 
                 # Draw head
@@ -242,10 +244,10 @@ class MockProvider:
                     fill=hue_color,
                 )
 
-                # Legs
-                if r == 1:
-                    # Walk cycle
-                    leg_swing = (c % 2) * 8 - 4
+                # Legs + arms (swing opposite each other for a natural walk/run cycle)
+                if is_walk_row:
+                    phase = (c / max(1, cols)) * math.pi * 2
+                    leg_swing = int(math.sin(phase) * (cw // 10))
                 else:
                     leg_swing = 0
 
@@ -257,6 +259,19 @@ class MockProvider:
                     [cx + 2 - leg_swing - recoil, cy + ch // 6 + bob, cx + cw // 8 - leg_swing - recoil, cy + ch // 3 + bob],
                     fill=(40, 40, 80),
                 )
+
+                # Arms — swing opposite the legs; skip on the attack row (arm is the weapon slash instead)
+                if r != 2:
+                    arm_swing = -leg_swing if is_walk_row else 0
+                    skin = (255, 220, 180) if r != 3 else (255, 180, 180)
+                    draw.rectangle(
+                        [cx - cw // 5 + arm_swing - recoil, cy - ch // 14 + bob, cx - cw // 9 + arm_swing - recoil, cy + ch // 5 + bob],
+                        fill=skin,
+                    )
+                    draw.rectangle(
+                        [cx + cw // 9 - arm_swing - recoil, cy - ch // 14 + bob, cx + cw // 5 - arm_swing - recoil, cy + ch // 5 + bob],
+                        fill=skin,
+                    )
 
                 # Face/eyes
                 draw.rectangle(
