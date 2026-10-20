@@ -305,33 +305,13 @@
   </main>
 
   <!-- Scripts -->
-  <script src="/static/js/auth.js"></script>
-  <script src="/static/js/biome-parallax.js"></script>
-  <script src="/static/js/audio-engine.js"></script>
-  <script src="/static/js/game-sandbox.js"></script>
+  <script src="/static/js/auth.js?v=1.6"></script>
+  <script src="/static/js/biome-parallax.js?v=1.6"></script>
+  <script src="/static/js/audio-engine.js?v=1.6"></script>
+  <script src="/static/js/game-sandbox.js?v=1.6"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       window._sandbox = new GameSandbox('sandbox-stage');
-
-      // "Play in Game" from the Generator links here as /game?sprite=<name> —
-      // look that sprite up and drop the player straight into character mode.
-      const spriteName = new URLSearchParams(window.location.search).get('sprite');
-      if (spriteName) {
-        fetch('/api/sprites')
-          .then(r => r.json())
-          .then(sprites => {
-            const sprite = Array.isArray(sprites) ? sprites.find(s => s.name === spriteName) : null;
-            if (sprite) {
-              window._sandbox.ingestSpriteAsCharacter({
-                id: sprite.name,
-                name: sprite.name,
-                imageUrl: sprite.image_url,
-                metadata: sprite.metadata || {},
-              });
-            }
-          })
-          .catch(err => console.warn('Could not auto-load sprite from URL:', err));
-      }
 
       const infoModal = document.getElementById('info-modal');
       document.getElementById('toggle-info-btn')?.addEventListener('click', () => {

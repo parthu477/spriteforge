@@ -899,13 +899,8 @@ body {
 .previewer-live-dot {
   color: #10b981;
   font-size: 1rem;
-  animation: pulse-dot 2s ease-in-out infinite;
+  opacity: 1;
   filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.6));
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.85); }
 }
 
 .previewer-title {
@@ -1574,7 +1569,7 @@ body {
   border-radius: 4px;
   letter-spacing: 0.05em;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  animation: pulse-dot 2s ease-in-out infinite;
+  animation: pulse-dot 3s ease-in-out infinite;
 }
 
 .gallery-item img {

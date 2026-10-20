@@ -47,6 +47,7 @@ class GameSandbox {
       crashed: false,
       crashTimer: 0,
     };
+    this.wheelRotation = 0;
 
     // ── Gameplay & Scoring State (Issue #33) ────────────────────
     this.distanceMeters  = 0;
@@ -166,6 +167,30 @@ class GameSandbox {
     this._resize();
     this._spawnInitialCollectibles();
     this._updateHUD();
+
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetSprite = urlParams.get('sprite');
+      if (targetSprite) {
+        fetch('/api/sprites').then(r => r.json()).then(gallery => {
+          const item = Array.isArray(gallery) ? gallery.find(s => s.name === targetSprite) : null;
+          if (item) {
+            this.ingestSpriteAsCharacter({
+              name: item.name,
+              imageUrl: item.image_url,
+              metadata: item.metadata || {},
+            });
+          } else {
+            this.spawnCar({ defaultCar: true });
+          }
+        }).catch(() => this.spawnCar({ defaultCar: true }));
+      } else {
+        this.spawnCar({ defaultCar: true });
+      }
+    } catch (_) {
+      this.spawnCar({ defaultCar: true });
+    }
+
     this._loop(0);
   }
 
@@ -201,6 +226,13 @@ class GameSandbox {
       reader.onload = (ev) => {
         loadSafeImage(ev.target.result).then(img => {
           this.customSprite = img;
+          this.customVehicleSprite = {
+            img,
+            name: file.name ? file.name.replace(/\.[^/.]+$/, '') : 'custom_sprite',
+            metadata: {},
+            fw: img.naturalWidth || 128,
+            fh: img.naturalHeight || 128,
+          };
           this.spawnCar();
         }).catch(err => console.error('Failed to load sprite file:', err));
       };
@@ -445,18 +477,19 @@ class GameSandbox {
     // Retro jump / spring sound FX
     this.audio?.playJump?.();
 
-    // Emit upward dust and exhaust burst particles from rear wheels
+    // Emit upward dust and exhaust burst particles from wheels
     const screenCarX = this.W * 0.35;
-    const wheelY     = car.y + 32;
+    const wheelY     = car.y + 31;
     const particles  = this.renderer?.particles;
     if (particles) {
       if (typeof particles.emitJumpDust === 'function') {
-        particles.emitJumpDust(screenCarX - 26, wheelY);
-        particles.emitJumpDust(screenCarX + 26, wheelY);
+        particles.emitJumpDust(screenCarX - 30, wheelY);
+        particles.emitJumpDust(screenCarX + 32, wheelY);
       } else {
-        particles.emitTireDirt(screenCarX - 26, wheelY, -15, true);
+        particles.emitTireDirt(screenCarX - 30, wheelY, -15, true);
+        particles.emitTireDirt(screenCarX + 32, wheelY, -15, true);
       }
-      particles.emitExhaust(screenCarX - 44, car.y + 8, 14);
+      particles.emitExhaust(screenCarX - 52, car.y + 10, 14);
     }
   }
 
@@ -487,14 +520,15 @@ class GameSandbox {
 
   _setCarGroundY() {
     const biome = this.renderer.currentBiome;
-    this.groundY = this.H * biome.groundLine - 30; // 30 = half car height
+    const groundLineY = this.H * biome.groundLine;
+    this.groundY = groundLineY - 31; // tyre bottom (wy=16, r=15) firmly plants on groundLineY
     if (this.car.onGround) {
       this.car.y = this.groundY;
     }
     if (this.coins) {
       this.coins.forEach(c => {
         if (c.yOffset !== undefined) {
-          c.wy = this.groundY - c.yOffset;
+          c.wy = groundLineY - c.yOffset;
         }
       });
     }
@@ -510,7 +544,9 @@ class GameSandbox {
   }
 
   _generateCollectiblesAhead(targetX) {
-    const gY = this.groundY || (this.H * this.renderer.currentBiome.groundLine - 30);
+    const biome = this.renderer.currentBiome;
+    const groundLineY = this.H * biome.groundLine;
+    const gY = groundLineY;
 
     // ── Infinite Procedural Coins (Formations & Star Coins, Issue #49)
     while (this._lastCoinSpawnX < targetX) {
@@ -627,7 +663,8 @@ class GameSandbox {
     }
     const car    = this.car;
     const biome  = this.renderer.currentBiome;
-    const gY     = this.H * biome.groundLine - 30;
+    const groundLineY = this.H * biome.groundLine;
+    const gY     = groundLineY - 31;
     const gravity  = biome.id === 'moon' ? 180 : 600;
     const friction = biome.id === 'moon' ? 0.97 : 0.90;
     const maxSpeed = biome.id === 'moon' ? 7 : 12;
@@ -695,6 +732,10 @@ class GameSandbox {
     // ── Position update ─────────────────────────────────────────
     car.y += car.vy * dt;
     this.cameraX += car.vx * dt;
+
+    // Continuous dynamic wheel rotation based on horizontal distance + mid-air throttle spin
+    const airWheelSpin = (!car.onGround && car.throttle > 0) ? (350 * dt) : 0;
+    this.wheelRotation = (this.wheelRotation || 0) + (car.vx * dt + airWheelSpin) / 15;
 
     // Distance meter in meters (Issue #33)
     if (car.vx > 0) this.distanceMeters += (car.vx * dt) / 60;
@@ -773,13 +814,13 @@ class GameSandbox {
     // ── Particle emission ────────────────────────────────────────
     const particles  = this.renderer.particles;
     const screenCarX = this.W * 0.35;
-    const wheelY     = car.y + 32;
+    const wheelY     = car.y + 31;
     if (car.onGround && Math.abs(car.vx) > 1) {
-      particles.emitTireDirt(screenCarX - 18, wheelY, car.speed, true);
-      particles.emitTireDirt(screenCarX + 18, wheelY, car.speed, true);
+      particles.emitTireDirt(screenCarX - 30, wheelY, car.speed, true);
+      particles.emitTireDirt(screenCarX + 32, wheelY, car.speed, true);
     }
     if (car.throttle > 0 || Math.abs(car.speed) > 1) {
-      particles.emitExhaust(screenCarX - 44, car.y + 8, car.speed);
+      particles.emitExhaust(screenCarX - 52, car.y + 10, car.speed);
     }
 
     // ── Procedural Endless Generation Ahead (Issue #49) ─────────
@@ -918,6 +959,7 @@ class GameSandbox {
       this.characterMode = false;
       this.audio?.stopEngine?.();
     }
+    this.worldSprites = [];
     this._restart();
   }
 
@@ -932,10 +974,11 @@ class GameSandbox {
         if (this.pauseBtnText) this.pauseBtnText.textContent = 'Pause';
       }
     }
-    this.hasVehicle     = false;
-    this.characterMode  = false;
-    this.customSprite   = null;
-    this.customVehicleSprite = null;
+    this.hasVehicle          = false;
+    this.characterMode       = false;
+    this.customSprite        = null;
+    this.customVehicleSprite = null; // clear vehicle skin
+    this.worldSprites        = [];   // clear all placed world sprites
     this.floatingPopups = [];
     this.cameraX        = 0;
     this.distanceMeters = 0;
@@ -974,6 +1017,7 @@ class GameSandbox {
     car.onGround = true; car.angle = 0; car.flipped = false;
     car.fuel = 100; car.coins = 0; car.crashed = false; car.crashTimer = 0;
     this.cameraX        = 0;
+    this.wheelRotation  = 0;
     this.distanceMeters = 0;
     this.stuntBonus     = 0;
     this.totalScore     = 0;
@@ -1004,13 +1048,14 @@ class GameSandbox {
     const { W, H, car } = this;
     ctx.clearRect(0, 0, W, H);
 
-    const biome  = this.renderer.currentBiome;
-    const gY     = H * biome.groundLine - 30;
-    const carSX  = W * 0.35; // car screen X
+    const biome       = this.renderer.currentBiome;
+    const groundLineY = H * biome.groundLine;
+    const gY          = groundLineY - 31;
+    const carSX       = W * 0.35; // car screen X
 
     // ── Background & Midground Placed World Sprites (Parallax) ───
-    this._drawWorldSprites(ctx, 'background', biome, gY, carSX);
-    this._drawWorldSprites(ctx, 'midground',  biome, gY, carSX);
+    this._drawWorldSprites(ctx, 'background', biome, groundLineY, carSX);
+    this._drawWorldSprites(ctx, 'midground',  biome, groundLineY, carSX);
 
     // Draw uncollected coins — star icon for high-value crests and jump bonus (Issue #33 & #49)
     this.coins.forEach(coin => {
@@ -1060,7 +1105,7 @@ class GameSandbox {
       if (fc.collected) return;
       const fx = fc.wx - this.cameraX + carSX;
       if (fx < -30 || fx > W + 30) return;
-      const fy = gY - 20;
+      const fy = groundLineY - 20;
       ctx.save();
       ctx.fillStyle = '#E53935';
       ctx.fillRect(fx - 10, fy - 20, 20, 28);
@@ -1076,26 +1121,49 @@ class GameSandbox {
     });
 
     // ── Ground-Level Placed World Sprites (Sorted behind Car) ────
-    this._drawWorldSprites(ctx, 'ground', biome, gY, carSX);
+    this._drawWorldSprites(ctx, 'ground', biome, groundLineY, carSX);
 
-    // Draw car
+    // Draw car / active sprite (single entity, single animated frame)
     if (this.hasVehicle) {
+      // Dynamic suspension vibration and pitch
+      const suspensionBob = (car.onGround && Math.abs(car.vx) > 5)
+        ? Math.sin(performance.now() * 0.025) * Math.min(1.2, Math.abs(car.speed) * 0.2)
+        : 0;
+      const pitchAngle = car.onGround
+        ? (car.throttle > 0 ? -1.8 : (car.braking ? 2.8 : 0))
+        : 0;
+
+      // Realistic Contact Shadow on Ground (stays anchored on groundLineY when jumping!)
+      const distAboveGround = Math.max(0, gY - car.y);
+      const shadowScale = Math.max(0.35, 1 - distAboveGround / 240);
+      const shadowAlpha = Math.max(0.08, 0.42 * shadowScale);
+
       ctx.save();
-      ctx.translate(carSX, car.y + 28);
-      // A walking/running character shouldn't tilt like a car flipping in the air.
-      if (!this.characterMode) ctx.rotate(car.angle * Math.PI / 180);
-      if (this.customSprite) {
-        const w = 88;
-        const h = (this.customSprite.height / this.customSprite.width) * w;
-        ctx.drawImage(this.customSprite, -w / 2, -h / 2, w, h);
-      } else {
-        this._drawCar(ctx, biome.id);
+      ctx.fillStyle = `rgba(0, 0, 0, ${shadowAlpha})`;
+      ctx.beginPath();
+      ctx.ellipse(carSX, groundLineY + 1, 52 * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Additional tyre contact occlusion shadows when on the ground
+      if (car.onGround) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(carSX - 30, groundLineY + 1, 16, 3, 0, 0, Math.PI * 2);
+        ctx.ellipse(carSX + 32, groundLineY + 1, 16, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
       }
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(carSX, car.y + suspensionBob);
+      // A walking/running character shouldn't tilt/pitch like a car.
+      if (!this.characterMode) ctx.rotate((car.angle + pitchAngle) * Math.PI / 180);
+      this._drawCar(ctx, biome.id, groundLineY);
       ctx.restore();
     }
 
     // ── Foreground Overlay Placed World Sprites (In front of Car) ─
-    this._drawWorldSprites(ctx, 'overlay', biome, gY, carSX);
+    this._drawWorldSprites(ctx, 'overlay', biome, groundLineY, carSX);
 
     // Crash flash
     if (car.crashed && car.crashTimer > 1.2) {
@@ -1106,8 +1174,185 @@ class GameSandbox {
     }
   }
 
-  _drawCar(ctx, biomeId) {
+  /* ── High-Fidelity Realistic Wheel System ───────────────────────
+   * Features:
+   * - Stationary ventilated disc brake rotor + Brembo-style racing caliper
+   * - Rotating thick tire rubber with visible outer tread notches
+   * - Rotating 5-twin-spoke alloy rim with chrome highlights
+   * - Recessed center hub with 5 chrome lug nuts & anodized badge
+   * ───────────────────────────────────────────────────────────── */
+  _drawRealisticWheel(ctx, wx, wy, radius = 15, angle = 0, style = {}) {
+    ctx.save();
+    ctx.translate(wx, wy);
+
+    // 1. STATIONARY BRAKE SYSTEM (Does NOT rotate with wheel)
+    const rotorR = radius * 0.72;
+    const rotorGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, rotorR);
+    rotorGrad.addColorStop(0, '#94a3b8');
+    rotorGrad.addColorStop(0.7, '#cbd5e1');
+    rotorGrad.addColorStop(0.9, '#64748b');
+    rotorGrad.addColorStop(1, '#475569');
+    ctx.fillStyle = rotorGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, rotorR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rotor circular surface grooves
+    ctx.strokeStyle = 'rgba(71, 85, 105, 0.45)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(0, 0, rotorR * 0.82, 0, Math.PI * 2);
+    ctx.arc(0, 0, rotorR * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Rotor ventilation drill holes
+    ctx.fillStyle = '#1e293b';
+    for (let h = 0; h < 6; h++) {
+      const ha = (Math.PI / 3) * h + 0.25;
+      ctx.beginPath();
+      ctx.arc(Math.cos(ha) * (rotorR * 0.72), Math.sin(ha) * (rotorR * 0.72), 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Racing Brake Caliper (Brembo style)
+    const caliperColor = style.caliper || '#E11D48';
+    ctx.save();
+    ctx.fillStyle = caliperColor;
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, rotorR * 1.05, -Math.PI * 0.88, -Math.PI * 0.35);
+    ctx.arc(0, 0, rotorR * 0.60, -Math.PI * 0.35, -Math.PI * 0.88, true);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Caliper metallic accent & bleed pins
+    ctx.fillStyle = '#fb7185';
+    ctx.fillRect(-rotorR * 0.58, -rotorR * 0.94, rotorR * 0.38, 1.4);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-rotorR * 0.62, -rotorR * 0.58, 0.9, 0, Math.PI * 2);
+    ctx.arc(-rotorR * 0.32, -rotorR * 0.78, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 2. ROTATING WHEEL ASSEMBLY (Tire + Rim + Spokes rotate with angle)
+    ctx.rotate(angle);
+
+    // Tire outer rubber
+    const tireGrad = ctx.createRadialGradient(0, 0, radius * 0.68, 0, 0, radius);
+    tireGrad.addColorStop(0, '#27272a');
+    tireGrad.addColorStop(0.65, '#18181b');
+    tireGrad.addColorStop(1, '#09090b');
+    ctx.fillStyle = tireGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Visible rotating tire tread blocks
+    const treadCount = 14;
+    ctx.fillStyle = '#3f3f46';
+    for (let t = 0; t < treadCount; t++) {
+      const ta = (Math.PI * 2 / treadCount) * t;
+      ctx.beginPath();
+      ctx.arc(Math.cos(ta) * (radius - 1.2), Math.sin(ta) * (radius - 1.2), 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Sidewall rim line
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius - 2.8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Alloy Rim Lip (Chrome / Machined Silver bevel)
+    const rimR = radius * 0.68;
+    const rimGrad = ctx.createLinearGradient(-rimR, -rimR, rimR, rimR);
+    rimGrad.addColorStop(0, '#f8fafc');
+    rimGrad.addColorStop(0.35, '#94a3b8');
+    rimGrad.addColorStop(0.7, '#e2e8f0');
+    rimGrad.addColorStop(1, '#475569');
+    ctx.fillStyle = rimGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, rimR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rim inner recess (dark chamber behind spokes)
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.beginPath();
+    ctx.arc(0, 0, rimR - 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 5 Twin-Spoke Racing Alloy Rim
+    const spokeCount = 5;
+    for (let s = 0; s < spokeCount; s++) {
+      const sa = (Math.PI * 2 / spokeCount) * s;
+      ctx.save();
+      ctx.rotate(sa);
+
+      const spokeGrad = ctx.createLinearGradient(0, 0, 0, rimR - 1.5);
+      spokeGrad.addColorStop(0, '#f1f5f9');
+      spokeGrad.addColorStop(0.5, '#cbd5e1');
+      spokeGrad.addColorStop(1, '#94a3b8');
+      ctx.fillStyle = spokeGrad;
+
+      // Twin aerodynamic alloy spokes
+      ctx.beginPath();
+      ctx.moveTo(-2.2, 2.5);
+      ctx.lineTo(-1.2, rimR - 1.5);
+      ctx.lineTo(0.2, rimR - 1.5);
+      ctx.lineTo(-0.8, 2.5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(0.8, 2.5);
+      ctx.lineTo(0.2, rimR - 1.5);
+      ctx.lineTo(1.6, rimR - 1.5);
+      ctx.lineTo(2.2, 2.5);
+      ctx.closePath();
+      ctx.fill();
+
+      // Chrome bevel highlight on spoke
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(-1.2, rimR - 1.5);
+      ctx.lineTo(-2.2, 2.5);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // Center Hub & 5 Chrome Lug Nuts
+    const hubR = radius * 0.28;
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(0, 0, hubR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#f8fafc';
+    for (let n = 0; n < 5; n++) {
+      const na = (Math.PI * 2 / 5) * n;
+      ctx.beginPath();
+      ctx.arc(Math.cos(na) * (hubR * 0.65), Math.sin(na) * (hubR * 0.65), 0.85, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Central Emblem Badge
+    const badgeColor = style.badge || '#06B6D4';
+    ctx.fillStyle = badgeColor;
+    ctx.beginPath();
+    ctx.arc(0, 0, hubR * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  _drawCar(ctx, biomeId, groundLineY) {
     // Controllable walking/running character: big, no wheels, foot-cycle animation.
+    // Must be checked before the generic "any inserted sprite = vehicle" path below.
     if (this.characterMode && this.customVehicleSprite && this.customVehicleSprite.img && this.customVehicleSprite.img.complete) {
       const s = this.customVehicleSprite;
       const targetH = 150;
@@ -1117,12 +1362,6 @@ class GameSandbox {
       const speed = Math.abs(this.car?.vx || 0);
       const moving = speed > 5;
       const running = speed > 220;
-
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.beginPath();
-      ctx.ellipse(0, targetH * 0.46, targetW * 0.3, 7, 0, 0, Math.PI * 2);
-      ctx.fill();
 
       // Multi-frame animation: cycle faster while running, hold frame 0 when idle
       const totalFrames = s.metadata?.frame_count || (s.metadata?.rows * s.metadata?.columns) || 1;
@@ -1146,117 +1385,283 @@ class GameSandbox {
       return;
     }
 
-    // Vehicle sprite skin (wheels + chassis).
-    if (this.customVehicleSprite && this.customVehicleSprite.img && this.customVehicleSprite.img.complete) {
-      const s = this.customVehicleSprite;
-      const targetW = 96;
-      const aspect = s.fw / Math.max(1, s.fh);
-      const targetH = Math.max(30, Math.min(65, targetW / aspect));
+    const customAsset = this.customVehicleSprite || (this.customSprite ? {
+      img: this.customSprite,
+      fw: (this.customSprite.naturalWidth && this.customSprite.naturalWidth >= 128) ? 128 : (this.customSprite.naturalWidth || 64),
+      fh: (this.customSprite.naturalHeight && this.customSprite.naturalHeight >= 128) ? 128 : (this.customSprite.naturalHeight || 64),
+      metadata: {},
+    } : null);
 
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    // ── 1. CUSTOM INSERTED SPRITE VEHICLE ─────────────────────────
+    if (customAsset && customAsset.img && customAsset.img.complete) {
+      const targetW = 100;
+      const fw = customAsset.fw || customAsset.img.naturalWidth || 100;
+      const fh = customAsset.fh || customAsset.img.naturalHeight || 100;
+      const aspect = fw / Math.max(1, fh);
+      const targetH = Math.max(38, Math.min(80, targetW / aspect));
+
+      // Multi-frame animation playback: render ONLY one frame, never the entire sheet
+      const totalFrames = customAsset.metadata?.frame_count || (customAsset.metadata?.rows * customAsset.metadata?.columns) || 1;
+      const fps = customAsset.metadata?.fps || 8;
+      const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
+      const cols = customAsset.metadata?.columns || totalFrames || 1;
+      const fx = (currentFrame % cols) * fw;
+      const fy = Math.floor(currentFrame / cols) * fh;
+
+      // Draw custom sprite body slightly elevated above wheel axles
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        customAsset.img,
+        fx, fy, fw, fh,
+        -targetW / 2, -targetH / 2 - 2,
+        targetW, targetH
+      );
+
+      // Render realistic rotating alloy wheels underneath the custom sprite!
+      const wheelR = Math.max(13, Math.min(16, targetH * 0.28));
+      const rearWX = -targetW * 0.28;
+      const frontWX = targetW * 0.28;
+      const wheelWY = 16;
+
+      this._drawRealisticWheel(ctx, rearWX, wheelWY, wheelR, this.wheelRotation, { caliper: '#E11D48', badge: '#06B6D4' });
+      this._drawRealisticWheel(ctx, frontWX, wheelWY, wheelR, this.wheelRotation, { caliper: '#E11D48', badge: '#06B6D4' });
+
+      // Subtle under-chassis shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.beginPath();
-      ctx.ellipse(0, 32, targetW * 0.45, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, wheelWY + wheelR, targetW * 0.44, 3, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Multi-frame animation playback
-      const totalFrames = s.metadata?.frame_count || (s.metadata?.rows * s.metadata?.columns) || 1;
-      const fps = s.metadata?.fps || 8;
-      const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
-      const cols = s.metadata?.columns || totalFrames || 1;
-      const fx = (currentFrame % cols) * s.fw;
-      const fy = Math.floor(currentFrame / cols) * s.fh;
-
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(s.img, fx, fy, s.fw, s.fh, -targetW / 2, -targetH / 2, targetW, targetH);
-
-      // Chassis Wheels
-      const wheelPositions = [[-28, 22], [28, 22]];
-      wheelPositions.forEach(([wx, wy]) => {
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath(); ctx.arc(wx, wy, 11, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#06b6d4';
-        ctx.beginPath(); ctx.arc(wx, wy, 5, 0, Math.PI * 2); ctx.fill();
-      });
       return;
     }
-    // Car body styling per biome
+
+    // ── 2. REALISTIC PROCEDURAL SPORTS CAR / GT RACER ─────────────
     const styles = {
-      countryside: { body: '#E53935', roof: '#C62828', wheel: '#212121', detail: '#FFEB3B' },
-      desert:      { body: '#FF9800', roof: '#E65100', wheel: '#3E2723', detail: '#FFF9C4' },
-      cyberpunk:   { body: '#7C4DFF', roof: '#311B92', wheel: '#000000', detail: '#00FFFF' },
-      moon:        { body: '#90A4AE', roof: '#546E7A', wheel: '#263238', detail: '#ECEFF1' },
+      countryside: {
+        body: '#E53935',
+        bodyDark: '#991B1B',
+        highlight: '#FF8A80',
+        roof: '#7F1D1D',
+        accent: '#FDE047',
+        caliper: '#EF4444',
+        badge: '#06B6D4',
+        glow: 'rgba(255, 235, 59, 0.45)',
+      },
+      desert: {
+        body: '#EA580C',
+        bodyDark: '#9A3412',
+        highlight: '#FDBA74',
+        roof: '#7C2D12',
+        accent: '#FEF08A',
+        caliper: '#F97316',
+        badge: '#EAB308',
+        glow: 'rgba(251, 146, 60, 0.45)',
+      },
+      cyberpunk: {
+        body: '#7C3AED',
+        bodyDark: '#4C1D95',
+        highlight: '#C4B5FD',
+        roof: '#2E1065',
+        accent: '#06B6D4',
+        caliper: '#06B6D4',
+        badge: '#22D3EE',
+        glow: 'rgba(6, 182, 212, 0.75)',
+      },
+      moon: {
+        body: '#475569',
+        bodyDark: '#1E293B',
+        highlight: '#94A3B8',
+        roof: '#0F172A',
+        accent: '#38BDF8',
+        caliper: '#38BDF8',
+        badge: '#38BDF8',
+        glow: 'rgba(56, 189, 248, 0.55)',
+      },
     };
     const s = styles[biomeId] || styles.countryside;
 
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath();
-    ctx.ellipse(0, 32, 42, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const rearWX = -30;
+    const frontWX = 32;
+    const wheelWY = 16;
+    const wheelR = 15;
 
-    // Body
-    const bodyGrad = ctx.createLinearGradient(-40, -28, 40, 10);
-    bodyGrad.addColorStop(0, s.body);
-    bodyGrad.addColorStop(1, s.roof);
+    // A. Forward LED Headlight Beam Cone onto Road
+    ctx.save();
+    const beamGrad = ctx.createRadialGradient(48, 5, 0, 150, 18, 120);
+    beamGrad.addColorStop(0, 'rgba(255, 255, 230, 0.22)');
+    beamGrad.addColorStop(0.5, 'rgba(255, 255, 230, 0.08)');
+    beamGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = beamGrad;
+    ctx.beginPath();
+    ctx.moveTo(48, 2);
+    ctx.lineTo(210, -10);
+    ctx.lineTo(220, 32);
+    ctx.lineTo(48, 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // B. Aerodynamic Carbon GT Wing / Spoiler
+    ctx.fillStyle = '#1e293b';
+    // Wing Struts
+    ctx.fillRect(-44, -20, 3, 14);
+    ctx.fillRect(-35, -20, 3, 13);
+    // Aerofoil Blade
+    const wingGrad = ctx.createLinearGradient(-50, -26, -30, -20);
+    wingGrad.addColorStop(0, '#0f172a');
+    wingGrad.addColorStop(0.5, '#334155');
+    wingGrad.addColorStop(1, '#0f172a');
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.roundRect(-52, -26, 24, 6, 2);
+    ctx.fill();
+    // Wing Endplate
+    ctx.fillStyle = s.accent;
+    ctx.fillRect(-52, -28, 2.5, 9);
+
+    // C. Main Aerodynamic Chassis Body Shell
+    // Contoured multi-stage gradient for realistic automotive finish
+    const bodyGrad = ctx.createLinearGradient(-52, -24, 52, 14);
+    bodyGrad.addColorStop(0, s.bodyDark);
+    bodyGrad.addColorStop(0.3, s.body);
+    bodyGrad.addColorStop(0.7, s.body);
+    bodyGrad.addColorStop(1, s.bodyDark);
     ctx.fillStyle = bodyGrad;
+
     ctx.beginPath();
-    ctx.roundRect(-44, -10, 88, 28, 6);
+    // Start at rear diffuser bottom
+    ctx.moveTo(-52, 11);
+    // Rear bumper up to rear light deck
+    ctx.lineTo(-52, -1);
+    ctx.lineTo(-46, -7);
+    // Rear fastback slope
+    ctx.lineTo(-30, -14);
+    // Roofline & cabin
+    ctx.lineTo(-18, -23);
+    ctx.lineTo(4, -23);
+    // Windshield slope down to hood
+    ctx.lineTo(20, -5);
+    // Sleek hood line down to nose
+    ctx.lineTo(46, 2);
+    // Aggressive front nose cone
+    ctx.lineTo(52, 7);
+    // Front chin splitter
+    ctx.lineTo(54, 12);
+    ctx.lineTo(48, 14);
+    // Front wheel well arch (clears front wheel)
+    ctx.lineTo(frontWX + 18, 14);
+    ctx.arc(frontWX, wheelWY, 18, 0, Math.PI, true);
+    // Side rocker panel / carbon skirt
+    ctx.lineTo(rearWX + 18, 14);
+    // Rear wheel well arch (clears rear wheel)
+    ctx.arc(rearWX, wheelWY, 18, 0, Math.PI, true);
+    // Bottom diffuser edge
+    ctx.lineTo(-52, 11);
+    ctx.closePath();
     ctx.fill();
 
-    // Roof/Cabin
-    ctx.fillStyle = s.roof;
+    // D. Carbon Lower Splitter & Side Skirt Lip
+    ctx.fillStyle = '#0f172a';
     ctx.beginPath();
-    ctx.roundRect(-28, -28, 56, 20, 4);
+    ctx.roundRect(-10, 12, 22, 2.5, 1);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(46, 12, 8, 2.5, 1);
     ctx.fill();
 
-    // Windows
-    ctx.fillStyle = biomeId === 'cyberpunk' ? 'rgba(0,255,255,0.3)' : 'rgba(180,220,255,0.7)';
-    ctx.fillRect(-24, -25, 22, 14);
-    ctx.fillRect(2,  -25, 22, 14);
+    // E. Metallic Shoulder Highlight Line
+    ctx.strokeStyle = s.highlight;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-44, -5);
+    ctx.lineTo(20, -4);
+    ctx.lineTo(46, 3);
+    ctx.stroke();
 
-    // Headlights
-    ctx.fillStyle = '#FFFDE7';
-    ctx.shadowColor = '#FFFDE7'; ctx.shadowBlur = 8;
-    ctx.beginPath(); ctx.arc(42, -2, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
+    // F. Racing Livery Stripe
+    ctx.fillStyle = s.accent;
+    ctx.fillRect(-48, 3, 98, 2.5);
 
-    // Taillights
-    ctx.fillStyle = '#FF1744';
-    ctx.shadowColor = '#FF1744'; ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.arc(-42, -2, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
+    // G. Cockpit Windows / Racing Glass
+    const glassGrad = ctx.createLinearGradient(-16, -22, 18, -6);
+    glassGrad.addColorStop(0, '#0f172a');
+    glassGrad.addColorStop(0.5, '#1e293b');
+    glassGrad.addColorStop(1, '#334155');
+    ctx.fillStyle = glassGrad;
+    ctx.beginPath();
+    ctx.moveTo(-16, -21);
+    ctx.lineTo(2, -21);
+    ctx.lineTo(16, -7);
+    ctx.lineTo(-24, -7);
+    ctx.closePath();
+    ctx.fill();
 
-    // Detail stripe
-    ctx.strokeStyle = s.detail;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-40, 0); ctx.lineTo(40, 0); ctx.stroke();
+    // Glass reflection diagonal glare
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.beginPath();
+    ctx.moveTo(-8, -21);
+    ctx.lineTo(-2, -21);
+    ctx.lineTo(-12, -7);
+    ctx.lineTo(-18, -7);
+    ctx.closePath();
+    ctx.fill();
 
-    // Exhaust pipe
-    ctx.fillStyle = '#616161';
-    ctx.fillRect(-48, 6, 8, 5);
+    // Driver helmet silhouette inside cabin
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.arc(-4, -13, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Helmet visor
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-2, -15, 3.5, 3);
 
-    // Wheels
-    const wheelPositions = [[-26, 22], [26, 22]];
-    wheelPositions.forEach(([wx, wy]) => {
-      // Tyre
-      ctx.fillStyle = s.wheel;
-      ctx.beginPath(); ctx.arc(wx, wy, 12, 0, Math.PI * 2); ctx.fill();
-      // Rim
-      ctx.fillStyle = '#BDBDBD';
-      ctx.beginPath(); ctx.arc(wx, wy, 6, 0, Math.PI * 2); ctx.fill();
-      // Hub
-      ctx.fillStyle = '#757575';
-      ctx.beginPath(); ctx.arc(wx, wy, 3, 0, Math.PI * 2); ctx.fill();
-      // Spokes
-      ctx.strokeStyle = '#9E9E9E'; ctx.lineWidth = 1.5;
-      for (let i = 0; i < 4; i++) {
-        const a = (Math.PI / 2) * i;
-        ctx.beginPath();
-        ctx.moveTo(wx + Math.cos(a)*3, wy + Math.sin(a)*3);
-        ctx.lineTo(wx + Math.cos(a)*6, wy + Math.sin(a)*6);
-        ctx.stroke();
-      }
+    // Aerodynamic Side Mirror
+    ctx.fillStyle = s.bodyDark;
+    ctx.beginPath();
+    ctx.roundRect(14, -8, 6, 3.5, 1.5);
+    ctx.fill();
+
+    // H. Front Xenon LED Headlights
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = s.glow;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(46, 3);
+    ctx.lineTo(51, 6);
+    ctx.lineTo(47, 8);
+    ctx.closePath();
+    ctx.fill();
+    // Projector LED jewel dots
+    ctx.fillStyle = '#fef08a';
+    ctx.beginPath();
+    ctx.arc(48, 5.5, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // I. Rear Neon LED Taillight Bar
+    ctx.save();
+    const isBraking = this.car.braking;
+    ctx.fillStyle = isBraking ? '#ff0033' : '#e11d48';
+    ctx.shadowColor = isBraking ? '#ff0033' : '#e11d48';
+    ctx.shadowBlur = isBraking ? 14 : 7;
+    ctx.fillRect(-52, 0, 4, isBraking ? 5 : 3.5);
+    ctx.restore();
+
+    // J. Dual Chrome Exhaust Tips
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(-54, 8, 4, 3);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-54.5, 8.5, 1.5, 2);
+
+    // K. High-Performance Rotating Alloy Wheels
+    this._drawRealisticWheel(ctx, rearWX, wheelWY, wheelR, this.wheelRotation, {
+      caliper: s.caliper,
+      badge: s.badge
+    });
+    this._drawRealisticWheel(ctx, frontWX, wheelWY, wheelR, this.wheelRotation, {
+      caliper: s.caliper,
+      badge: s.badge
     });
   }
 
@@ -1592,6 +1997,9 @@ class GameSandbox {
       const fw = meta.frame_width || img.naturalWidth || 128;
       const fh = meta.frame_height || img.naturalHeight || 128;
 
+      // Ensure existing world sprites are cleared to avoid duplicates when driving vehicle
+      this.worldSprites = [];
+
       this.hasVehicle = true;
       this.characterMode = true;
       this.customSprite = null; // keep the old static-image path from shadowing the cropped character render
@@ -1612,6 +2020,12 @@ class GameSandbox {
         text: `🚶 Now playing as: ${asset.name}!`,
         alpha: 1.4
       });
+
+      // Start engine audio for any sprite type — audio is shared for all vehicles
+      if (!this._gameOver && !this.car?.crashed) {
+        this.audio?.startEngine?.();
+      }
+
       this.audio?.playCoinPickup?.();
     }).catch(err => console.error('Failed to ingest vehicle sprite:', err));
   }

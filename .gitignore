@@ -66,3 +66,6 @@ spikes/results_*.json
 backend/data/*.db
 !backend/data/.gitkeep
 
+# Documents
+*.docx
+

@@ -15,15 +15,27 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 log = logging.getLogger(__name__)
 
-# Default SQLite database path in backend/data/users.db
-_DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "users.db"
+def _resolve_default_db_path() -> Path:
+    # 1. Explicit environment variable
+    env_db = os.environ.get("USERS_DB_PATH") or os.environ.get("DATABASE_PATH")
+    if env_db:
+        raw_db = Path(env_db.strip())
+        return raw_db.resolve() if raw_db.is_absolute() else (Path(__file__).resolve().parent.parent / env_db.strip()).resolve()
+    # 2. If ASSET_DIR is an absolute persistent mount (e.g. /var/data/sprites), place users.db in the parent persistent folder
+    asset_dir_env = os.environ.get("ASSET_DIR", "").strip()
+    if asset_dir_env:
+        asset_p = Path(asset_dir_env)
+        if asset_p.is_absolute():
+            return asset_p.parent / "users.db"
+    # 3. Default fallback in backend/data/users.db
+    return Path(__file__).resolve().parent.parent / "data" / "users.db"
 
 
 class AuthService:
     """Lightweight, secure user authentication service backed by SQLite."""
 
     def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = db_path or _DEFAULT_DB_PATH
+        self.db_path = db_path or _resolve_default_db_path()
         self._ensure_db()
 
     def _get_connection(self) -> sqlite3.Connection:

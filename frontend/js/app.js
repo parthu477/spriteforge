@@ -145,8 +145,15 @@ let currentActiveSprite = {
   metadata: null,
 };
 
+let _isJobRunning = false;
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Guard: prevent concurrent job submissions that create duplicate gallery entries
+  if (_isJobRunning) {
+    showError('A generation is already in progress. Please wait for it to finish.');
+    return;
+  }
   hideError();
   const body = buildPayload();
   if (!body) return;
@@ -181,6 +188,8 @@ function buildPayload() {
 }
 
 async function submitJob(body) {
+  if (_isJobRunning) return; // Extra guard against race
+  _isJobRunning = true;
   setGenerating(true);
   showResult();
 
@@ -207,6 +216,7 @@ async function submitJob(body) {
     currentJobId = data.job_id;
     trackJob(currentJobId);
   } catch (err) {
+    _isJobRunning = false;
     setGenerating(false);
     showError('Network error: ' + err.message);
     hideResult();
@@ -682,6 +692,7 @@ class SpriteAnimationPlayer {
 const animationPlayer = new SpriteAnimationPlayer();
 
 function onJobDone(data) {
+  _isJobRunning = false;
   cleanupTracking();
   setGenerating(false);
   closeExportMenu();
@@ -737,6 +748,7 @@ function onJobDone(data) {
 }
 
 function onJobFailed(data) {
+  _isJobRunning = false;
   cleanupTracking();
   setGenerating(false);
   statusSpinner.style.display = 'none';
@@ -789,7 +801,15 @@ function hideError() { formError.hidden = true; }
 async function loadGallery() {
   try {
     const resp = await fetch('/api/sprites');
-    const sprites = await resp.json();
+    const rawSprites = await resp.json();
+    // Deduplicate by base name — keep only the most recent entry per sprite/prompt
+    const seen = new Set();
+    const sprites = rawSprites.filter(s => {
+      const baseName = (s.name || '').replace(/_[a-f0-9]{6}$/i, '');
+      if (seen.has(baseName)) return false;
+      seen.add(baseName);
+      return true;
+    });
     if (!sprites.length) {
       galleryGrid.innerHTML = '<p class="gallery-empty">No sprites yet — generate one above!</p>';
       return;
