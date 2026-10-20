@@ -112,7 +112,9 @@ class GameSandbox {
 
     // ── Entity State & Spawn Controls (Issue #44) ───────────────
     this.hasVehicle     = false;
+    this.characterMode  = false; // true = imported sprite walks/runs on foot (no wheels, footstep sound)
     this.customSprite   = null;
+    this._footstepTimer = 0;
     this.spawnCarBtn    = document.getElementById('spawn-car-btn');
     this.insertSpriteBtn= document.getElementById('insert-sprite-btn');
     this.spriteFileInput= document.getElementById('sprite-file-input');
@@ -173,7 +175,7 @@ class GameSandbox {
         fetch('/api/sprites').then(r => r.json()).then(gallery => {
           const item = Array.isArray(gallery) ? gallery.find(s => s.name === targetSprite) : null;
           if (item) {
-            this.ingestSpriteAsVehicle({
+            this.ingestSpriteAsCharacter({
               name: item.name,
               imageUrl: item.image_url,
               metadata: item.metadata || {},
@@ -197,10 +199,22 @@ class GameSandbox {
     this._boundResize = () => this._resize();
     this._boundKeyDown = e => { this.keys[e.code] = true;  this._onKeyDown(e); };
     this._boundKeyUp = e => { this.keys[e.code] = false; };
+    // Tabbing/alt-tabbing away can drop the keyup event, leaving a key stuck "down"
+    // forever — which reads as the car/character driving off on its own. Clear all
+    // input state whenever the window/tab loses focus or visibility.
+    this._boundBlurReset = () => {
+      this.keys = {};
+      this._touchState.gas = 0;
+      this._touchState.brake = 0;
+    };
 
     window.addEventListener('resize', this._boundResize);
     window.addEventListener('keydown', this._boundKeyDown);
     window.addEventListener('keyup',   this._boundKeyUp);
+    window.addEventListener('blur', this._boundBlurReset);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this._boundBlurReset();
+    });
 
     // Issue #44: Dedicated Spawn Controls
     this.spawnCarBtn?.addEventListener('click', () => this.spawnCar({ defaultCar: true }));
@@ -230,6 +244,10 @@ class GameSandbox {
       this.renderer.setBiome(this.biomeSelect.value);
       if (this.hudBiome) this.hudBiome.textContent = this.biomeSelect.options[this.biomeSelect.selectedIndex].text;
       try { localStorage.setItem('spriteforge_pref_biome', this.biomeSelect.value); } catch (_) {}
+      // A focused <select> intercepts arrow keys natively and silently cycles its own
+      // options — which looked like the biome changing on its own while driving.
+      // Hand focus back to the game so gameplay keys reach the controller instead.
+      this.biomeSelect.blur();
     });
 
     this.muteBtn?.addEventListener('click', () => {
@@ -253,7 +271,7 @@ class GameSandbox {
         if (!this.hasVehicle) return;
         this._touchState[type] = 1;
         el.classList.add('pedal-pressed');
-        if (type === 'gas' && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
+        if (type === 'gas' && !this.characterMode && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
           this.audio.startEngine();
         }
       };
@@ -384,6 +402,15 @@ class GameSandbox {
   }
 
   _onKeyDown(e) {
+    // A focused toolbar control (e.g. the Biome <select>) intercepts arrow keys
+    // natively before gameplay ever sees them, silently changing its own value.
+    // Release focus back to the game on any gameplay key press.
+    const activeTag = document.activeElement?.tagName;
+    if (activeTag === 'SELECT' || activeTag === 'INPUT' || activeTag === 'BUTTON') {
+      e.preventDefault();
+      document.activeElement.blur();
+    }
+
     // Escape or KeyP: Instant Toggle Pause / Resume (Issue #50 Specification 4)
     if (e.code === 'Escape' || e.code === 'KeyP') {
       if (e.code === 'Escape') {
@@ -432,7 +459,7 @@ class GameSandbox {
     // Gas keys — start engine audio (zero latency)
     const isGas = (e.code === 'ArrowRight' || e.code === 'KeyD' ||
                    e.code === 'ArrowUp'    || e.code === 'KeyW');
-    if (isGas && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
+    if (isGas && !this.characterMode && !this.car.crashed && !this._gameOver && this.car.fuel > 0) {
       this.audio.startEngine();
     }
   }
@@ -631,8 +658,6 @@ class GameSandbox {
   _update(dt) {
     if (dt <= 0) return;
     if (!this.hasVehicle) {
-      this.renderer.draw(this.cameraX);
-      this._drawForeground();
       this._updateHUD();
       return;
     }
@@ -650,8 +675,6 @@ class GameSandbox {
         this._gameOverShown = true;
         this._showGameOver();
       }
-      this.renderer.draw(this.cameraX);
-      this._drawForeground();
       return;
     }
 
@@ -659,8 +682,6 @@ class GameSandbox {
     if (car.crashed) {
       car.crashTimer -= dt;
       if (car.crashTimer <= 0) this._gameOver = true;
-      this.renderer.draw(this.cameraX);
-      this._drawForeground();
       return;
     }
 
@@ -676,18 +697,20 @@ class GameSandbox {
     car.throttle = gasDown ? 1 : 0;
     car.braking  = !!brakeDown;
 
-    if (car.onGround) {
+    if (car.onGround || this.characterMode) {
+      // Character mode: forward/backward/jump only — no car air-tilt, and
+      // the character keeps walking/running even while airborne (jumping).
       if (car.fuel > 0 && gasDown) car.vx += 280 * dt;
       if (brakeDown) {
         if (car.vx > 0.5) {
           car.vx *= 0.85;
-          if (Math.abs(car.vx) > 3 * 60) this.audio.playBrakeSqueal(Math.min(Math.abs(car.vx) / (8 * 60), 1));
+          if (!this.characterMode && Math.abs(car.vx) > 3 * 60) this.audio.playBrakeSqueal(Math.min(Math.abs(car.vx) / (8 * 60), 1));
         } else if (car.vx > -maxSpeed * 60 * 0.4) {
           car.vx -= 140 * dt; // allow some reverse
         }
       }
     } else {
-      // Mid-air: A/D or ←/→ apply rotational torque (Spec 1, Issue #33)
+      // Vehicle mode, mid-air: A/D or ←/→ apply rotational torque (Spec 1, Issue #33)
       if (gasDown)   car.angle += 90 * dt;  // Clockwise tilt-right
       if (brakeDown) car.angle -= 90 * dt;  // Counter-clockwise tilt-left
     }
@@ -848,11 +871,31 @@ class GameSandbox {
     this.floatingPopups = this.floatingPopups.filter(p => p.alpha > 0);
     this.floatingPopups.forEach(p => { p.y -= 55 * dt; p.alpha -= 0.9 * dt; });
 
-    // ── Audio engine update ─────────────────────────────────────
-    this.audio.updateEngineSound?.(car.speed, car.throttle);
+    // ── Audio update ──────────────────────────────────────────────
+    if (this.characterMode) {
+      this._updateFootsteps(dt, car);
+    } else {
+      this.audio.updateEngineSound?.(car.speed, car.throttle);
+    }
 
     // ── HUD update (Issue #33) ───────────────────────────────────
     this._updateHUD();
+  }
+
+  /* ── Footstep cadence for walking/running character mode ─────── */
+  _updateFootsteps(dt, car) {
+    const speed = Math.abs(car.vx || 0);
+    if (speed < 5 || !car.onGround) {
+      this._footstepTimer = 0;
+      return;
+    }
+    const running = speed > 220;
+    const stepInterval = running ? 0.22 : 0.38;
+    this._footstepTimer -= dt;
+    if (this._footstepTimer <= 0) {
+      this._footstepTimer = stepInterval;
+      this.audio?.playFootstep?.(running);
+    }
   }
 
   /* ── Spawn floating score popup (Issue #33) ─────────────────── */
@@ -913,6 +956,8 @@ class GameSandbox {
     if (options.defaultCar) {
       this.customSprite = null;
       this.customVehicleSprite = null;
+      this.characterMode = false;
+      this.audio?.stopEngine?.();
     }
     this.worldSprites = [];
     this._restart();
@@ -930,6 +975,7 @@ class GameSandbox {
       }
     }
     this.hasVehicle          = false;
+    this.characterMode       = false;
     this.customSprite        = null;
     this.customVehicleSprite = null; // clear vehicle skin
     this.worldSprites        = [];   // clear all placed world sprites
@@ -1110,7 +1156,8 @@ class GameSandbox {
 
       ctx.save();
       ctx.translate(carSX, car.y + suspensionBob);
-      ctx.rotate((car.angle + pitchAngle) * Math.PI / 180);
+      // A walking/running character shouldn't tilt/pitch like a car.
+      if (!this.characterMode) ctx.rotate((car.angle + pitchAngle) * Math.PI / 180);
       this._drawCar(ctx, biome.id, groundLineY);
       ctx.restore();
     }
@@ -1304,6 +1351,40 @@ class GameSandbox {
   }
 
   _drawCar(ctx, biomeId, groundLineY) {
+    // Controllable walking/running character: big, no wheels, foot-cycle animation.
+    // Must be checked before the generic "any inserted sprite = vehicle" path below.
+    if (this.characterMode && this.customVehicleSprite && this.customVehicleSprite.img && this.customVehicleSprite.img.complete) {
+      const s = this.customVehicleSprite;
+      const targetH = 150;
+      const aspect = s.fw / Math.max(1, s.fh);
+      const targetW = targetH * aspect;
+
+      const speed = Math.abs(this.car?.vx || 0);
+      const moving = speed > 5;
+      const running = speed > 220;
+
+      // Multi-frame animation: cycle faster while running, hold frame 0 when idle
+      const totalFrames = s.metadata?.frame_count || (s.metadata?.rows * s.metadata?.columns) || 1;
+      const cols = s.metadata?.columns || totalFrames || 1;
+      const fps = moving ? (running ? 12 : 7) : 2;
+      const currentFrame = moving
+        ? Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames)
+        : 0;
+      const fx = (currentFrame % cols) * s.fw;
+      const fy = Math.floor(currentFrame / cols) * s.fh;
+
+      ctx.imageSmoothingEnabled = false;
+      if ((this.car?.vx || 0) < 0) {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(s.img, fx, fy, s.fw, s.fh, -targetW / 2, -targetH / 2, targetW, targetH);
+        ctx.restore();
+      } else {
+        ctx.drawImage(s.img, fx, fy, s.fw, s.fh, -targetW / 2, -targetH / 2, targetW, targetH);
+      }
+      return;
+    }
+
     const customAsset = this.customVehicleSprite || (this.customSprite ? {
       img: this.customSprite,
       fw: (this.customSprite.naturalWidth && this.customSprite.naturalWidth >= 128) ? 128 : (this.customSprite.naturalWidth || 64),
@@ -1805,7 +1886,9 @@ class GameSandbox {
       const meta = a.metadata || {};
       const fw = meta.frame_width || 128;
       const fh = meta.frame_height || 128;
-      const grid = `${meta.rows || 1}×${meta.columns || 1}`;
+      const cols = meta.columns || 1;
+      const rows = meta.rows || 1;
+      const grid = `${rows}×${cols}`;
       const timeStr = a.timestamp ? new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Recent';
       const targetClass = item.target === 'both' ? 'target-both' : 'target-biome';
       const targetName = item.target === 'both' ? 'Both' : 'Biome';
@@ -1814,7 +1897,8 @@ class GameSandbox {
         <div class="shelf-item-card" data-idx="${idx}">
           <div class="shelf-card-top">
             <div class="shelf-card-thumb-wrap">
-              <img src="${a.imageUrl}" alt="${a.name}" class="shelf-card-thumb" crossorigin="anonymous" loading="lazy">
+              <div class="shelf-card-thumb" role="img" aria-label="${a.name}"
+                   style="background-image:url('${a.imageUrl}');background-size:${cols * 100}% ${rows * 100}%;background-position:0 0;"></div>
             </div>
             <div class="shelf-card-info">
               <span class="shelf-card-name">${a.name}</span>
@@ -1826,14 +1910,8 @@ class GameSandbox {
             </div>
           </div>
           <div class="shelf-card-actions">
-            <button type="button" class="btn-quick-ingest" data-idx="${idx}" title="Quick Ingest: Place into parallax world and bind texture">
+            <button type="button" class="btn-quick-ingest" data-idx="${idx}" title="Quick Ingest: control this sprite as your big walking/running character">
               ⚡ Quick Ingest
-            </button>
-            <button type="button" class="btn-card-subaction btn-place-world" data-idx="${idx}" title="Place sprite into parallax world layers">
-              🌍 Place in World
-            </button>
-            <button type="button" class="btn-card-subaction btn-skin-car" data-idx="${idx}" title="Skin player vehicle with this sprite">
-              🚗 Drive as Vehicle
             </button>
           </div>
         </div>
@@ -1846,8 +1924,7 @@ class GameSandbox {
         const idx = parseInt(btn.dataset.idx, 10);
         const item = this.incomingAssets[idx];
         if (!item) return;
-        // Only skin the vehicle — do NOT also place a world sprite to avoid duplicates
-        this.ingestSpriteAsVehicle(item.asset);
+        this.ingestSpriteAsCharacter(item.asset);
         if (this.assetShelf?.classList.contains('open')) {
           this.assetShelf.classList.remove('open');
           if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
@@ -1856,23 +1933,6 @@ class GameSandbox {
       });
     });
 
-    this.shelfList.querySelectorAll('.btn-place-world').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const idx = parseInt(btn.dataset.idx, 10);
-        const item = this.incomingAssets[idx];
-        if (item) this.ingestSpriteToWorld(item.asset);
-      });
-    });
-
-    this.shelfList.querySelectorAll('.btn-skin-car').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const idx = parseInt(btn.dataset.idx, 10);
-        const item = this.incomingAssets[idx];
-        if (item) this.ingestSpriteAsVehicle(item.asset);
-      });
-    });
   }
 
   /**
@@ -1880,12 +1940,18 @@ class GameSandbox {
    * respecting parallax depth, terrain ground offset, and sorting layer.
    */
   ingestSpriteToWorld(asset, preferredLayer = null) {
+    // Placing the same asset again replaces its existing world copy instead of stacking duplicates.
+    const dupIdx = this.worldSprites.findIndex(
+      ws => ws.assetId === asset.id || ws.name === asset.name
+    );
+    if (dupIdx !== -1) this.worldSprites.splice(dupIdx, 1);
+
     loadSafeImage(asset.imageUrl).then(img => {
       const meta = asset.metadata || {};
       const fw = meta.frame_width || img.naturalWidth || 128;
       const fh = meta.frame_height || img.naturalHeight || 128;
       const aspect = fw / Math.max(1, fh);
-      const drawW = 90;
+      const drawW = 180;
       const drawH = drawW / aspect;
 
       // Determine sorting layer: cycle through ground, background, midground, overlay or use preferred
@@ -1897,6 +1963,7 @@ class GameSandbox {
 
       this.worldSprites.push({
         id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        assetId: asset.id,
         img,
         name: asset.name,
         metadata: meta,
@@ -1920,9 +1987,11 @@ class GameSandbox {
   }
 
   /**
-   * Convert image to texture and skin active vehicle chassis with custom sprite.
+   * Make the ingested sprite the controllable character: walks/runs on foot
+   * (no wheels, footstep sound instead of engine sound) using the same
+   * movement keys and camera/physics loop as the vehicle.
    */
-  ingestSpriteAsVehicle(asset) {
+  ingestSpriteAsCharacter(asset) {
     loadSafeImage(asset.imageUrl).then(img => {
       const meta = asset.metadata || {};
       const fw = meta.frame_width || img.naturalWidth || 128;
@@ -1932,7 +2001,8 @@ class GameSandbox {
       this.worldSprites = [];
 
       this.hasVehicle = true;
-      this.customSprite = img;
+      this.characterMode = true;
+      this.customSprite = null; // keep the old static-image path from shadowing the cropped character render
       this.customVehicleSprite = {
         img,
         name: asset.name,
@@ -1941,10 +2011,13 @@ class GameSandbox {
         fh,
       };
 
+      // Stop any car engine sound still running from a previous vehicle sprite.
+      this.audio?.stopEngine?.();
+
       this.floatingPopups?.push({
         x: this.W * 0.35,
         y: 190,
-        text: `🚗 Vehicle Skinned: ${asset.name}!`,
+        text: `🚶 Now playing as: ${asset.name}!`,
         alpha: 1.4
       });
 
@@ -2031,6 +2104,7 @@ class GameSandbox {
     window.removeEventListener('resize', this._boundResize);
     window.removeEventListener('keydown', this._boundKeyDown);
     window.removeEventListener('keyup', this._boundKeyUp);
+    if (this._boundBlurReset) window.removeEventListener('blur', this._boundBlurReset);
     if (this._boundStorage) window.removeEventListener('storage', this._boundStorage);
     if (this._boundShelfKeyDown) document.removeEventListener('keydown', this._boundShelfKeyDown);
     if (this.busChannel) {

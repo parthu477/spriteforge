@@ -85,8 +85,8 @@ body.game-page .navbar {
 }
 
 .ctrl-select {
-  background: rgba(255,255,255,0.07);
-  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: #e2e8f0;
   font-family: inherit;
@@ -96,14 +96,20 @@ body.game-page .navbar {
   transition: border-color 0.2s;
   outline: none;
 }
-.ctrl-select:hover { border-color: rgba(139,92,246,0.6); }
-.ctrl-select option { background: #1e1e2e; }
+
+.ctrl-select:hover {
+  border-color: rgba(139, 92, 246, 0.6);
+}
+
+.ctrl-select option {
+  background: #1e1e2e;
+}
 
 .ctrl-btn {
   padding: 0.4rem 1rem;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
   color: #e2e8f0;
   font-family: inherit;
   font-size: 0.85rem;
@@ -112,8 +118,16 @@ body.game-page .navbar {
   transition: all 0.2s;
   white-space: nowrap;
 }
-.ctrl-btn:hover { background: rgba(255,255,255,0.12); }
-.ctrl-btn.muted { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+
+.ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ctrl-btn.muted {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
 
 /* Issue #44: Spawn controls cluster & buttons */
 .spawn-controls-cluster {
@@ -132,6 +146,7 @@ body.game-page .navbar {
   color: #34d399;
   font-weight: 600;
 }
+
 .btn-spawn-car:hover {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(6, 182, 212, 0.32));
   border-color: rgba(16, 185, 129, 0.8);
@@ -146,6 +161,7 @@ body.game-page .navbar {
   color: #c084fc;
   font-weight: 600;
 }
+
 .btn-insert-sprite:hover {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.32), rgba(236, 72, 153, 0.32));
   border-color: rgba(139, 92, 246, 0.8);
@@ -160,6 +176,7 @@ body.game-page .navbar {
   color: #f87171;
   font-weight: 600;
 }
+
 .btn-clear-sandbox:hover {
   background: rgba(239, 68, 68, 0.25);
   border-color: rgba(239, 68, 68, 0.7);
@@ -176,8 +193,8 @@ body.game-page .navbar {
 }
 
 .hint-chip {
-  background: rgba(139,92,246,0.12);
-  border: 1px solid rgba(139,92,246,0.25);
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.25);
   border-radius: 6px;
   padding: 0.25rem 0.55rem;
   font-size: 0.75rem;
@@ -210,8 +227,13 @@ body.game-page .navbar {
   display: block;
 }
 
-.sandbox-canvas-bg { z-index: 1; }
-.sandbox-canvas-fg { z-index: 2; }
+.sandbox-canvas-bg {
+  z-index: 1;
+}
+
+.sandbox-canvas-fg {
+  z-index: 2;
+}
 
 /* ── HUD ─────────────────────────────────────────────────────── */
 .sandbox-hud {
@@ -241,7 +263,9 @@ body.game-page .navbar {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-.hud-icon { font-size: 0.9rem; }
+.hud-icon {
+  font-size: 0.9rem;
+}
 
 .hud-val {
   font-family: 'Space Mono', monospace;
@@ -261,7 +285,7 @@ body.game-page .navbar {
 .hud-fuel-track {
   width: 60px;
   height: 4px;
-  background: rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -282,22 +306,24 @@ body.game-page .navbar {
 .crash-overlay {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: 50; /* above the navbar (40) and controls bar (30) */
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.72);
+  background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(8px);
   animation: fadeIn 0.3s ease;
 }
 
 .crash-panel {
+  max-height: 90vh;
+  overflow-y: auto;
   text-align: center;
-  background: rgba(30,10,50,0.9);
-  border: 1px solid rgba(239,68,68,0.4);
+  background: rgba(30, 10, 50, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.4);
   border-radius: 20px;
   padding: 2.5rem 3rem;
-  box-shadow: 0 0 40px rgba(239,68,68,0.2), 0 20px 60px rgba(0,0,0,0.5);
+  box-shadow: 0 0 40px rgba(239, 68, 68, 0.2), 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .crash-icon {
@@ -331,11 +357,12 @@ body.game-page .navbar {
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.2s;
-  box-shadow: 0 4px 20px rgba(124,58,237,0.35);
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.35);
 }
+
 .btn-restart:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(124,58,237,0.5);
+  box-shadow: 0 8px 30px rgba(124, 58, 237, 0.5);
 }
 
 /* ── Touch controls ──────────────────────────────────────────── */
@@ -347,15 +374,17 @@ body.game-page .navbar {
 }
 
 @media (pointer: coarse) {
-  .touch-controls { display: flex; }
+  .touch-controls {
+    display: flex;
+  }
 }
 
 .touch-btn {
   flex: 1;
   padding: 1.1rem;
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.07);
   color: #e2e8f0;
   font-family: 'Space Mono', monospace;
   font-size: 1rem;
@@ -365,8 +394,16 @@ body.game-page .navbar {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
-.touch-btn:active { background: rgba(139,92,246,0.25); transform: scale(0.97); }
-.touch-btn-gas    { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.3); }
+
+.touch-btn:active {
+  background: rgba(139, 92, 246, 0.25);
+  transform: scale(0.97);
+}
+
+.touch-btn-gas {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.3);
+}
 
 /* ── Feature Cards ───────────────────────────────────────────── */
 .feature-cards {
@@ -377,15 +414,16 @@ body.game-page .navbar {
 }
 
 .feat-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 16px;
   padding: 1.5rem 1.25rem;
   text-align: center;
   transition: border-color 0.2s, transform 0.2s;
 }
+
 .feat-card:hover {
-  border-color: rgba(139,92,246,0.4);
+  border-color: rgba(139, 92, 246, 0.4);
   transform: translateY(-3px);
 }
 
@@ -423,28 +461,67 @@ body.game-page .navbar {
   font-weight: 500;
   transition: color 0.2s;
 }
-.nav-link:hover { color: #e2e8f0; }
+
+.nav-link:hover {
+  color: #e2e8f0;
+}
 
 /* ── Animations ──────────────────────────────────────────────── */
 @keyframes fadeIn {
-  from { opacity: 0; } to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes shake {
-  0%, 100% { transform: translate(0,0) rotate(0deg); }
-  20%       { transform: translate(-4px,2px) rotate(-3deg); }
-  40%       { transform: translate(4px,-2px) rotate(3deg); }
-  60%       { transform: translate(-3px,3px) rotate(-2deg); }
-  80%       { transform: translate(3px,-3px) rotate(2deg); }
+
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  20% {
+    transform: translate(-4px, 2px) rotate(-3deg);
+  }
+
+  40% {
+    transform: translate(4px, -2px) rotate(3deg);
+  }
+
+  60% {
+    transform: translate(-3px, 3px) rotate(-2deg);
+  }
+
+  80% {
+    transform: translate(3px, -3px) rotate(2deg);
+  }
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .sandbox-stage { height: 320px; }
-  .sandbox-controls-bar { gap: 0.6rem; }
-  .ctrl-hints { display: none; }
-  .hud-biome-cell { display: none; }
-  .crash-panel { padding: 1.8rem 1.5rem; }
+  .sandbox-stage {
+    height: 320px;
+  }
+
+  .sandbox-controls-bar {
+    gap: 0.6rem;
+  }
+
+  .ctrl-hints {
+    display: none;
+  }
+
+  .hud-biome-cell {
+    display: none;
+  }
+
+  .crash-panel {
+    padding: 1.8rem 1.5rem;
+  }
 }
 
 /* ── Issue #33: Distance cell & Speed + RPM wrap ─────────────── */
@@ -462,7 +539,7 @@ body.game-page .navbar {
 .hud-rpm-track {
   width: 52px;
   height: 3px;
-  background: rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -480,27 +557,37 @@ body.game-page .navbar {
   font-size: 0.65rem;
   font-weight: 700;
   color: #f87171;
-  background: rgba(239,68,68,0.2);
-  border: 1px solid rgba(239,68,68,0.5);
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
   border-radius: 5px;
   padding: 1px 5px;
   animation: fuelPulse 0.7s ease-in-out infinite alternate;
 }
 
 .fuel-cell.fuel-warning {
-  border-color: rgba(239,68,68,0.6) !important;
-  box-shadow: 0 0 12px rgba(239,68,68,0.3);
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
   animation: fuelWarnBorder 0.7s ease-in-out infinite alternate;
 }
 
 @keyframes fuelPulse {
-  from { opacity: 1; }
-  to   { opacity: 0.4; }
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.4;
+  }
 }
 
 @keyframes fuelWarnBorder {
-  from { box-shadow: 0 0 8px rgba(239,68,68,0.3); }
-  to   { box-shadow: 0 0 18px rgba(239,68,68,0.6); }
+  from {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+  }
+
+  to {
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.6);
+  }
 }
 
 /* ── Issue #49: On-Screen Touch / Mouse Control Pedals ────────── */
@@ -520,8 +607,8 @@ body.game-page .navbar {
   gap: 3px;
   padding: 1rem 0.5rem;
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(8px);
   color: #e2e8f0;
   font-family: 'Space Mono', monospace;
@@ -533,8 +620,8 @@ body.game-page .navbar {
 }
 
 .pedal-brake {
-  border-color: rgba(239,68,68,0.35);
-  background: linear-gradient(160deg, rgba(239,68,68,0.12), rgba(180,30,30,0.06));
+  border-color: rgba(239, 68, 68, 0.35);
+  background: linear-gradient(160deg, rgba(239, 68, 68, 0.12), rgba(180, 30, 30, 0.06));
 }
 
 .pedal-jump {
@@ -543,25 +630,55 @@ body.game-page .navbar {
 }
 
 .pedal-gas {
-  border-color: rgba(139,92,246,0.45);
-  background: linear-gradient(160deg, rgba(139,92,246,0.18), rgba(79,70,229,0.08));
+  border-color: rgba(139, 92, 246, 0.45);
+  background: linear-gradient(160deg, rgba(139, 92, 246, 0.18), rgba(79, 70, 229, 0.08));
 }
 
-.touch-pedal:hover { opacity: 0.95; }
-.pedal-jump:hover  { border-color: rgba(96, 165, 250, 0.65); }
+.touch-pedal:hover {
+  opacity: 0.95;
+}
+
+.pedal-jump:hover {
+  border-color: rgba(96, 165, 250, 0.65);
+}
 
 .touch-pedal.pedal-pressed,
 .touch-pedal:active {
   transform: scale(0.94);
 }
 
-.pedal-brake.pedal-pressed { background: rgba(239,68,68,0.32); box-shadow: 0 0 18px rgba(239,68,68,0.4); }
-.pedal-jump.pedal-pressed  { background: rgba(59, 130, 246, 0.35); box-shadow: 0 0 18px rgba(59, 130, 246, 0.5); border-color: #3b82f6; }
-.pedal-gas.pedal-pressed   { background: rgba(139,92,246,0.35); box-shadow: 0 0 18px rgba(139,92,246,0.5); }
+.pedal-brake.pedal-pressed {
+  background: rgba(239, 68, 68, 0.32);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.4);
+}
 
-.pedal-icon  { font-size: 1.6rem; line-height: 1; }
-.pedal-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; }
-.pedal-sub   { font-size: 0.6rem; color: #94a3b8; letter-spacing: 0.05em; }
+.pedal-jump.pedal-pressed {
+  background: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.5);
+  border-color: #3b82f6;
+}
+
+.pedal-gas.pedal-pressed {
+  background: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.5);
+}
+
+.pedal-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.pedal-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.pedal-sub {
+  font-size: 0.6rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
 
 /* ── Issue #33: Game Over Summary Stats Panel ────────────────── */
 .game-over-stats {
@@ -570,8 +687,8 @@ body.game-page .navbar {
   gap: 0.6rem 1.2rem;
   margin: 1rem 0 1.5rem;
   text-align: left;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 0.9rem 1rem;
 }
@@ -599,13 +716,19 @@ body.game-page .navbar {
 
 .go-total-row {
   grid-column: 1 / -1;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: 0.5rem;
   margin-top: 0.2rem;
 }
 
-.go-total-row .go-label { color: #a78bfa; }
-.go-total-row .go-value { color: #c4b5fd; font-size: 1.05rem; }
+.go-total-row .go-label {
+  color: #a78bfa;
+}
+
+.go-total-row .go-value {
+  color: #c4b5fd;
+  font-size: 1.05rem;
+}
 
 /* ── Issue #33: Go-actions (Try Again + Change Car) ─────────── */
 .go-actions {
@@ -622,8 +745,8 @@ body.game-page .navbar {
   gap: 0.4rem;
   padding: 0.7rem 1.4rem;
   border-radius: 10px;
-  border: 1px solid rgba(139,92,246,0.4);
-  background: rgba(139,92,246,0.1);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.1);
   color: #c4b5fd;
   font-family: 'Space Mono', monospace;
   font-size: 0.85rem;
@@ -632,11 +755,13 @@ body.game-page .navbar {
   cursor: pointer;
   transition: all 0.15s;
 }
+
 .btn-change-car:hover {
-  background: rgba(139,92,246,0.2);
-  border-color: rgba(139,92,246,0.6);
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.6);
   transform: translateY(-2px);
 }
+
 /* ── Info Modal Overlay (Feature Explainer) ─────────────────── */
 .info-modal {
   position: fixed;
@@ -700,6 +825,7 @@ body.game-page .navbar {
   font-size: 1.1rem;
   transition: all 0.2s;
 }
+
 .btn-info-close:hover {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
@@ -757,14 +883,26 @@ body.game-page .footer {
 }
 
 @keyframes badgePulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 10px rgba(236, 72, 153, 0.6); }
-  50% { transform: scale(1.15); box-shadow: 0 0 18px rgba(236, 72, 153, 0.9); }
+
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(236, 72, 153, 0.6);
+  }
+
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 18px rgba(236, 72, 153, 0.9);
+  }
 }
 
 /* ── Backdrop & Drawer Modal ───────────────────────────────── */
 .shelf-backdrop {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
   z-index: 9998;
@@ -776,13 +914,19 @@ body.game-page .footer {
 }
 
 @keyframes shelfFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .asset-shelf {
   position: fixed;
-  top: 0; right: 0;
+  top: 0;
+  right: 0;
   width: 440px;
   max-width: 92vw;
   height: 100vh;
@@ -958,7 +1102,7 @@ body.game-page .footer {
   height: 64px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: repeating-conic-gradient(rgba(255,255,255,0.06) 0% 25%, transparent 0% 50%) 50% / 12px 12px;
+  background: repeating-conic-gradient(rgba(255, 255, 255, 0.06) 0% 25%, transparent 0% 50%) 50% / 12px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -969,7 +1113,7 @@ body.game-page .footer {
 .shelf-card-thumb {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  background-repeat: no-repeat;
   image-rendering: pixelated;
 }
 
@@ -1178,7 +1322,7 @@ body.game-page .footer {
 .pause-overlay {
   position: absolute;
   inset: 0;
-  z-index: 24;
+  z-index: 50; /* above the navbar (40) and controls bar (30), so they're covered/blurred too */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1199,6 +1343,7 @@ body.game-page .footer {
     backdrop-filter: blur(0px);
     -webkit-backdrop-filter: blur(0px);
   }
+
   to {
     opacity: 1;
     backdrop-filter: blur(12px);
@@ -1208,13 +1353,15 @@ body.game-page .footer {
 
 .pause-panel {
   width: 90%;
-  max-width: 440px;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
   background: rgba(18, 18, 34, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 24px;
-  padding: 2.2rem 2.4rem;
+  border-radius: 20px;
+  padding: 1.5rem 1.7rem;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65), 0 0 40px rgba(139, 92, 246, 0.25);
   text-align: center;
   animation: pausePop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1225,6 +1372,7 @@ body.game-page .footer {
     transform: scale(0.92) translateY(12px);
     opacity: 0;
   }
+
   to {
     transform: scale(1) translateY(0);
     opacity: 1;
@@ -1265,12 +1413,12 @@ body.game-page .footer {
 .pause-stats {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.4rem;
   background: rgba(10, 10, 22, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 0.9rem 1.1rem;
-  margin-bottom: 1.6rem;
+  border-radius: 12px;
+  padding: 0.65rem 0.9rem;
+  margin-bottom: 0.9rem;
   text-align: left;
 }
 
@@ -1310,20 +1458,20 @@ body.game-page .footer {
 }
 
 .pause-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
 }
 
 .btn-pause-primary {
   width: 100%;
-  padding: 0.85rem 1.4rem;
+  padding: 0.55rem 0.7rem;
   background: linear-gradient(135deg, #06b6d4, #3b82f6);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
+  border-radius: 10px;
   color: #ffffff;
   font-family: 'Space Mono', monospace;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer !important;
   display: flex;
@@ -1342,13 +1490,13 @@ body.game-page .footer {
 
 .btn-pause-secondary {
   width: 100%;
-  padding: 0.75rem 1.2rem;
+  padding: 0.5rem 0.6rem;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
+  border-radius: 10px;
   color: #e2e8f0;
   font-family: 'Space Mono', monospace;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer !important;
   display: flex;
@@ -1367,13 +1515,13 @@ body.game-page .footer {
 
 .btn-pause-tertiary {
   width: 100%;
-  padding: 0.65rem 1.2rem;
+  padding: 0.5rem 0.6rem;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  border-radius: 10px;
   color: #cbd5e1;
   font-family: 'Space Mono', monospace;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer !important;
   display: flex;
@@ -1390,22 +1538,29 @@ body.game-page .footer {
 }
 
 .btn-pause-link {
-  display: inline-flex;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  color: #94a3b8;
+  gap: 0.5rem;
+  color: #cbd5e1;
   text-decoration: none;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.82rem;
-  margin-top: 0.3rem;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  box-sizing: border-box;
   cursor: pointer !important;
-  transition: color 0.2s;
+  transition: all 0.2s;
 }
 
 .btn-pause-link:hover {
-  color: #38bdf8;
-  text-decoration: underline;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 .pause-actions .btn-kbd-hint {
@@ -1420,14 +1575,13 @@ body.game-page .footer {
     padding: 0.38rem 0.8rem;
     font-size: 0.75rem;
   }
+
   .pause-panel {
     padding: 1.6rem 1.4rem;
     width: 92%;
   }
+
   .pause-title {
     font-size: 1.5rem;
   }
 }
-
-
-

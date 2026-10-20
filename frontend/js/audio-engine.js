@@ -345,6 +345,38 @@ class RetroAudioEngine {
     osc.stop(now + 0.24);
   }
 
+  /* ── Footstep thump (walking/running character mode) ────────── */
+  playFootstep(running = false) {
+    this._init(); this._resume();
+    if (this._muted) return;
+    const ctx = this._ctx, now = ctx.currentTime;
+
+    const bufLen = Math.floor(ctx.sampleRate * 0.08);
+    const buf    = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const data   = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = running ? 320 : 220;
+    filter.Q.value = 0.8;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(running ? 0.22 : 0.16, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this._master);
+
+    noise.start(now);
+    noise.stop(now + 0.1);
+  }
+
   /* ── Full Teardown & Lifecycle Cleanup (Issue #45) ───────────── */
   destroy() {
     this.stopEngine(true);

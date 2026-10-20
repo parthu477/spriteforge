@@ -28,7 +28,6 @@
     </div>
     <div class="nav-links">
       <a href="/"        class="nav-link">← Generator</a>
-      <a href="/physics" class="nav-link">🔩 Physics Sandbox</a>
       <a href="/api/health" target="_blank" class="nav-health" id="health-indicator" title="API Health">● Live</a>
       <div class="auth-nav-container" id="auth-nav-container"></div>
     </div>
@@ -171,79 +170,83 @@
         <span class="pause-text" id="pause-btn-text">Pause</span>
       </button>
 
-      <!-- Glassmorphic Pause Overlay Menu (Issue #50) -->
-      <div class="pause-overlay" id="pause-overlay" hidden>
-        <div class="pause-panel">
-          <div class="pause-badge">GAME SUSPENDED</div>
-          <h2 class="pause-title">Game Paused</h2>
-          <p class="pause-sub">Simulation frozen · Press Esc or P to resume</p>
-
-          <div class="pause-stats">
-            <div class="pause-stat">
-              <span class="pause-stat-label">📏 Distance reached</span>
-              <span class="pause-stat-val" id="pause-dist">0 m</span>
-            </div>
-            <div class="pause-stat">
-              <span class="pause-stat-label">🪙 Coins collected</span>
-              <span class="pause-stat-val" id="pause-coins">0</span>
-            </div>
-            <div class="pause-stat pause-stat-total">
-              <span class="pause-stat-label">⭐ Current Score</span>
-              <span class="pause-stat-val" id="pause-score">0 pts</span>
-            </div>
-          </div>
-
-          <div class="pause-actions">
-            <button id="pause-resume-btn" class="btn-pause-primary" title="Resume Game [P / Esc]">
-              <span class="btn-icon">▶</span> Resume Game
-            </button>
-            <button id="pause-restart-btn" class="btn-pause-secondary" title="Restart Run [R]">
-              <span class="btn-icon">🔄</span> Restart Run <span class="btn-kbd-hint">[R]</span>
-            </button>
-            <button id="pause-sound-btn" class="btn-pause-tertiary" title="Toggle Sound">
-              <span class="btn-icon" id="pause-sound-icon">🔊</span>
-              <span id="pause-sound-text">Mute Sound</span>
-            </button>
-            <a href="/" class="btn-pause-link" title="Change Car / Back to Studio">
-              <span class="btn-icon">🎨</span> Change Car / Back to Studio
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Game Over / Crash Overlay (Issue #33 Summary Panel) -->
-      <div class="crash-overlay" id="crash-overlay" hidden>
-        <div class="crash-panel">
-          <div class="crash-icon" id="crash-icon">💥</div>
-          <h2 class="crash-title" id="crash-title">Crashed!</h2>
-          <p class="crash-sub" id="crash-sub">Your vehicle flipped out</p>
-          <!-- Game Over Summary Stats (Issue #33) -->
-          <div class="game-over-stats">
-            <div class="go-stat">
-              <span class="go-label">📏 Distance</span>
-              <span class="go-value" id="go-dist">0 m</span>
-            </div>
-            <div class="go-stat">
-              <span class="go-label">🪙 Coins</span>
-              <span class="go-value" id="go-coins">0 🪙</span>
-            </div>
-            <div class="go-stat">
-              <span class="go-label">🔥 Stunt Bonus</span>
-              <span class="go-value" id="go-stunts">0 pts</span>
-            </div>
-            <div class="go-stat go-total-row">
-              <span class="go-label">⭐ Total Score</span>
-              <span class="go-value" id="go-total">0 pts</span>
-            </div>
-          </div>
-          <div class="go-actions">
-            <button id="restart-btn" class="btn-restart">🔄 Try Again <span style="font-size:0.75rem;opacity:0.8">[R]</span></button>
-            <a href="/" class="btn-change-car">🎨 Change Car</a>
-          </div>
-        </div>
-      </div>
-
     </div><!-- /.sandbox-stage -->
+
+    <!-- Overlays rendered as siblings of .sandbox-stage (not nested inside it) so their
+         z-index can actually rise above the navbar/toolbar, which live outside the
+         stage's own stacking context. -->
+
+    <!-- Glassmorphic Pause Overlay Menu (Issue #50) -->
+    <div class="pause-overlay" id="pause-overlay" hidden>
+      <div class="pause-panel">
+        <div class="pause-badge">GAME SUSPENDED</div>
+        <h2 class="pause-title">Game Paused</h2>
+        <p class="pause-sub">Simulation frozen · Press Esc or P to resume</p>
+
+        <div class="pause-stats">
+          <div class="pause-stat">
+            <span class="pause-stat-label">📏 Distance reached</span>
+            <span class="pause-stat-val" id="pause-dist">0 m</span>
+          </div>
+          <div class="pause-stat">
+            <span class="pause-stat-label">🪙 Coins collected</span>
+            <span class="pause-stat-val" id="pause-coins">0</span>
+          </div>
+          <div class="pause-stat pause-stat-total">
+            <span class="pause-stat-label">⭐ Current Score</span>
+            <span class="pause-stat-val" id="pause-score">0 pts</span>
+          </div>
+        </div>
+
+        <div class="pause-actions">
+          <button id="pause-resume-btn" class="btn-pause-primary" title="Resume Game [P / Esc]">
+            <span class="btn-icon">▶</span> Resume Game
+          </button>
+          <button id="pause-restart-btn" class="btn-pause-secondary" title="Restart Run [R]">
+            <span class="btn-icon">🔄</span> Restart Run <span class="btn-kbd-hint">[R]</span>
+          </button>
+          <button id="pause-sound-btn" class="btn-pause-tertiary" title="Toggle Sound">
+            <span class="btn-icon" id="pause-sound-icon">🔊</span>
+            <span id="pause-sound-text">Mute Sound</span>
+          </button>
+          <a href="/" class="btn-pause-link" title="Back to Dashboard">
+            <span class="btn-icon">🏠</span> Back to Dashboard
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over / Crash Overlay (Issue #33 Summary Panel) -->
+    <div class="crash-overlay" id="crash-overlay" hidden>
+      <div class="crash-panel">
+        <div class="crash-icon" id="crash-icon">💥</div>
+        <h2 class="crash-title" id="crash-title">Crashed!</h2>
+        <p class="crash-sub" id="crash-sub">Your vehicle flipped out</p>
+        <!-- Game Over Summary Stats (Issue #33) -->
+        <div class="game-over-stats">
+          <div class="go-stat">
+            <span class="go-label">📏 Distance</span>
+            <span class="go-value" id="go-dist">0 m</span>
+          </div>
+          <div class="go-stat">
+            <span class="go-label">🪙 Coins</span>
+            <span class="go-value" id="go-coins">0 🪙</span>
+          </div>
+          <div class="go-stat">
+            <span class="go-label">🔥 Stunt Bonus</span>
+            <span class="go-value" id="go-stunts">0 pts</span>
+          </div>
+          <div class="go-stat go-total-row">
+            <span class="go-label">⭐ Total Score</span>
+            <span class="go-value" id="go-total">0 pts</span>
+          </div>
+        </div>
+        <div class="go-actions">
+          <button id="restart-btn" class="btn-restart">🔄 Try Again <span style="font-size:0.75rem;opacity:0.8">[R]</span></button>
+          <a href="/" class="btn-change-car">🏠 Back to Dashboard</a>
+        </div>
+      </div>
+    </div>
 
     <!-- Mobile / On-Screen Touch Pedals (Issue #49) -->
     <div class="touch-controls pg-touch-pedals" id="touch-controls">

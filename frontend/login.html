@@ -131,6 +131,31 @@
       transition: all 0.2s;
     }
 
+    .password-field-wrap {
+      position: relative;
+      display: flex;
+    }
+    .password-field-wrap .form-input {
+      width: 100%;
+      padding-right: 2.6rem;
+    }
+    .password-toggle-btn {
+      position: absolute;
+      right: 0.65rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.05rem;
+      line-height: 1;
+      opacity: 0.6;
+      padding: 0.25rem;
+    }
+    .password-toggle-btn:hover {
+      opacity: 1;
+    }
+
     .form-input:focus {
       border-color: #8b5cf6;
       background: rgba(255, 255, 255, 0.09);
@@ -236,7 +261,10 @@
         </div>
         <div class="form-group">
           <label class="form-label" for="login-password">Password</label>
-          <input type="password" class="form-input" id="login-password" name="password" placeholder="••••••••" required autocomplete="current-password" minlength="8">
+          <div class="password-field-wrap">
+            <input type="password" class="form-input" id="login-password" name="password" placeholder="••••••••" required autocomplete="current-password" minlength="8">
+            <button type="button" class="password-toggle-btn" data-target="login-password" aria-label="Show password">👁</button>
+          </div>
         </div>
         <button type="submit" class="auth-submit-btn" id="login-submit-btn">
           <span>🚀 Sign In</span>
@@ -255,7 +283,10 @@
         </div>
         <div class="form-group">
           <label class="form-label" for="reg-password">Password</label>
-          <input type="password" class="form-input" id="reg-password" name="password" placeholder="At least 8 characters" required autocomplete="new-password" minlength="8">
+          <div class="password-field-wrap">
+            <input type="password" class="form-input" id="reg-password" name="password" placeholder="At least 8 characters" required autocomplete="new-password" minlength="8">
+            <button type="button" class="password-toggle-btn" data-target="reg-password" aria-label="Show password">👁</button>
+          </div>
         </div>
         <button type="submit" class="auth-submit-btn" id="reg-submit-btn">
           <span>✨ Create Account</span>
@@ -281,6 +312,17 @@
         }
       } catch (_) {}
     })();
+
+    document.querySelectorAll('.password-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.target);
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? '🙈' : '👁';
+        btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      });
+    });
 
     function switchAuthTab(tab) {
       const isLogin = tab === 'login';
