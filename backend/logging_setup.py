@@ -18,7 +18,8 @@ from pathlib import Path
 _REDACT_PATTERNS = [
     re.compile(r"Bearer\s+[A-Za-z0-9\-._~+/]+=*", re.IGNORECASE),
     re.compile(r"hf_[A-Za-z0-9]{34,}"),
-    re.compile(r"(?:CF_API_TOKEN|HF_TOKEN)\s*=\s*\S+", re.IGNORECASE),
+    re.compile(r"(?:CF_API_TOKEN|HF_TOKEN|GEMINI_API_KEY)\s*=\s*\S+", re.IGNORECASE),
+    re.compile(r"key=(?:AQ\.[A-Za-z0-9\-._~+/]+|AIza[A-Za-z0-9\-_]{35})", re.IGNORECASE),
 ]
 
 LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [job=%(job_id)s] %(message)s"

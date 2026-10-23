@@ -14,6 +14,11 @@ styles:
     suffix: "transparent background, textured brushwork, warm colors, game asset"
     negative: "pixel art, 3d render, blurry, watermark, text"
 
+  realistic:
+    prefix: "photorealistic detailed 2D game asset, hyper-realistic, 8k resolution,"
+    suffix: "isolated on pure plain white background, cinematic lighting, sharp crisp edges, octane render, ray-traced reflections"
+    negative: "pixel art, 8-bit, cartoon, low quality, blurry, deformed, sketch, watermark, text"
+
 grid_notes:
   "1x4":  "4 animation frames in a single row, left to right"
   "1x6":  "6 animation frames in a single row, left to right"

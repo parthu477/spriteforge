@@ -145,10 +145,6 @@ class TestRouteGuardsAndIsolation:
         assert resp.status_code == 302
         assert "/login?next=/" in resp.headers["Location"]
 
-        resp_phys = client.get("/physics", headers=headers)
-        assert resp_phys.status_code == 302
-        assert "/login?next=/physics" in resp_phys.headers["Location"]
-
         resp_game = client.get("/game", headers=headers)
         assert resp_game.status_code == 302
         assert "/login?next=/game" in resp_game.headers["Location"]

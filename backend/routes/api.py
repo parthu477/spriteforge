@@ -568,7 +568,10 @@ def health():
         "status": "ok",
         "provider": cfg.PROVIDER,
         "fallback_provider": cfg.FALLBACK_PROVIDER,
-        "model": cfg.CF_MODEL_ID if cfg.PROVIDER == "cloudflare" else cfg.LOCAL_MODEL_ID,
+        "model": (
+            cfg.CF_MODEL_ID if cfg.PROVIDER == "cloudflare"
+            else (cfg.GEMINI_MODEL if cfg.PROVIDER == "gemini" else cfg.LOCAL_MODEL_ID)
+        ),
         "asset_dir_writable": writable,
         "queue_depth": _job_store.queued_count() if _job_store else 0,
     }), 200

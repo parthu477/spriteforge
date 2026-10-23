@@ -82,6 +82,9 @@ def get_provider(name: str) -> ImageProvider:
     elif name == "huggingface":
         from .huggingface import HuggingFaceProvider
         return HuggingFaceProvider()
+    elif name == "gemini":
+        from .gemini import GeminiProvider
+        return GeminiProvider()
     elif name == "mock":
         from .mock import MockProvider
         return MockProvider()

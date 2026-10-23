@@ -74,6 +74,10 @@ class Config:
     HF_MODEL_ID: str = os.environ.get("HF_MODEL_ID", "")
     HF_API_URL: str = os.environ.get("HF_API_URL", "")
 
+    # ── Google Gemini (Option D) ──────────────────────────────
+    GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+    GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-image")
+
     # ── asset / image processing ──────────────────────────────
     ASSET_DIR: Path = _resolve_asset_dir()
     REMBG_MODEL: str = os.environ.get("REMBG_MODEL", "u2net")
@@ -131,6 +135,9 @@ class Config:
             elif provider == "huggingface":
                 if not cls.HF_TOKEN:
                     _fatal("PROVIDER=huggingface requires HF_TOKEN to be set in .env")
+            elif provider == "gemini":
+                if not cls.GEMINI_API_KEY:
+                    _fatal("PROVIDER=gemini requires GEMINI_API_KEY to be set in .env")
 
         # ASSET_DIR writability already checked in _resolve_asset_dir()
         # Clean up leftover temp files from a previous crash (AC 12 / startup hygiene)
