@@ -152,6 +152,14 @@
           <span class="hud-icon">🪙</span>
           <span class="hud-val" id="hud-coins">0</span>
         </div>
+        <div class="hud-cell level-cell" id="hud-level-cell" title="Current Level & Milestone">
+          <span class="hud-icon">🚩</span>
+          <span class="hud-val" id="hud-level">Level 1 (0-100m)</span>
+        </div>
+        <div class="hud-cell hiscore-cell" id="hud-hiscore-cell" title="Highest Points Record">
+          <span class="hud-icon">🏆</span>
+          <span class="hud-val" id="hud-hiscore">Best: 0</span>
+        </div>
         <div class="hud-cell hud-biome-cell">
           <span class="hud-icon">🌍</span>
           <span class="hud-val" id="hud-biome">🌄 Countryside / Rolling Hills</span>
@@ -189,12 +197,20 @@
             <span class="pause-stat-val" id="pause-dist">0 m</span>
           </div>
           <div class="pause-stat">
+            <span class="pause-stat-label">🚩 Current Level</span>
+            <span class="pause-stat-val" id="pause-level">Level 1</span>
+          </div>
+          <div class="pause-stat">
             <span class="pause-stat-label">🪙 Coins collected</span>
             <span class="pause-stat-val" id="pause-coins">0</span>
           </div>
           <div class="pause-stat pause-stat-total">
             <span class="pause-stat-label">⭐ Current Score</span>
             <span class="pause-stat-val" id="pause-score">0 pts</span>
+          </div>
+          <div class="pause-stat pause-stat-hiscore">
+            <span class="pause-stat-label">🏆 Best Record</span>
+            <span class="pause-stat-val" id="pause-hiscore">0 pts</span>
           </div>
         </div>
 
@@ -219,6 +235,7 @@
     <!-- Game Over / Crash Overlay (Issue #33 Summary Panel) -->
     <div class="crash-overlay" id="crash-overlay" hidden>
       <div class="crash-panel">
+        <div id="go-new-record" class="go-new-record" hidden>🎉 NEW RECORD! YOU SET THE HIGHEST POINTS! 🏆</div>
         <div class="crash-icon" id="crash-icon">💥</div>
         <h2 class="crash-title" id="crash-title">Crashed!</h2>
         <p class="crash-sub" id="crash-sub">Your vehicle flipped out</p>
@@ -229,16 +246,24 @@
             <span class="go-value" id="go-dist">0 m</span>
           </div>
           <div class="go-stat">
+            <span class="go-label">🚩 Level Reached</span>
+            <span class="go-value" id="go-level">Level 1</span>
+          </div>
+          <div class="go-stat">
             <span class="go-label">🪙 Coins</span>
             <span class="go-value" id="go-coins">0 🪙</span>
           </div>
           <div class="go-stat">
-            <span class="go-label">🔥 Stunt Bonus</span>
+            <span class="go-label">🔥 Stunt &amp; Obstacles</span>
             <span class="go-value" id="go-stunts">0 pts</span>
           </div>
           <div class="go-stat go-total-row">
             <span class="go-label">⭐ Total Score</span>
             <span class="go-value" id="go-total">0 pts</span>
+          </div>
+          <div class="go-stat go-hiscore-row">
+            <span class="go-label">🏆 Highest Points</span>
+            <span class="go-value" id="go-hiscore">0 pts</span>
           </div>
         </div>
         <div class="go-actions">

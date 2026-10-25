@@ -8,7 +8,7 @@ import re
 import unicodedata
 from typing import Any
 
-VALID_GRIDS = {"1x4", "1x6", "1x8", "2x4", "4x4"}
+VALID_GRIDS = {"1x1", "1x4", "1x6", "1x8", "2x4", "4x4"}
 VALID_STYLES = {"pixel_art", "cartoon", "painterly", "realistic"}
 VALID_PALETTES = {
     "original",

@@ -94,14 +94,29 @@ const toggleGalleryBtn = document.getElementById('toggle-gallery-btn');
 const closeGalleryBtn = document.getElementById('close-gallery-btn');
 const galleryDock = document.getElementById('gallery-dock');
 
-// ── Char counter ──────────────────────────────────────────────
+// ── Char counter & Smart Grid Detection ──────────────────────
+let userExplicitlyPickedGrid = false;
+
 promptInput.addEventListener('input', () => {
   promptCount.textContent = promptInput.value.length;
+  if (!userExplicitlyPickedGrid && !multiActionToggle?.checked) {
+    const val = promptInput.value.toLowerCase();
+    const isVehicleOrItem = /\b(car|vehicle|automobile|truck|sedan|coupe|racer|kart|van|bus|sword|shield|potion|item|icon|logo|object)\b/i.test(val);
+    if (isVehicleOrItem) {
+      const radio1x1 = form.querySelector('input[name="grid"][value="1x1"]');
+      if (radio1x1 && !radio1x1.checked) {
+        radio1x1.checked = true;
+        document.querySelectorAll('.grid-pill').forEach(p => p.classList.remove('active'));
+        radio1x1.closest('.grid-pill')?.classList.add('active');
+      }
+    }
+  }
 });
 
 // ── Grid pill & Multi-action toggle (AC 23.3) ──────────────────
 document.querySelectorAll('.grid-pill input').forEach(radio => {
   radio.addEventListener('change', () => {
+    userExplicitlyPickedGrid = true;
     document.querySelectorAll('.grid-pill').forEach(p => p.classList.remove('active'));
     radio.closest('.grid-pill').classList.add('active');
     if (radio.value !== '4x4' && multiActionToggle?.checked) {
@@ -503,7 +518,23 @@ class SpriteAnimationPlayer {
         this.currentFrame = 0;
         this.setFps(initialFps);
         this.renderFrame(0);
-        this.play();
+        if (this.frameCount <= 1 || metadata?.is_static || (rows === 1 && columns === 1)) {
+          this.pause();
+          if (this.frameCounter) {
+            this.frameCounter.textContent = 'Single Image (Static)';
+          }
+          if (this.btnPlayPause) {
+            this.btnPlayPause.disabled = true;
+            this.btnPlayPause.title = 'Static single image';
+          }
+          if (this.scrubber) {
+            this.scrubber.disabled = true;
+          }
+        } else {
+          if (this.btnPlayPause) this.btnPlayPause.disabled = false;
+          if (this.scrubber) this.scrubber.disabled = false;
+          this.play();
+        }
       }
     }).catch(err => {
       console.error('Failed to load sprite preview:', err);
@@ -534,7 +565,9 @@ class SpriteAnimationPlayer {
     });
 
     this.frameCount = this.activeTrack.frames;
+    if (this.btnPlayPause) this.btnPlayPause.disabled = false;
     if (this.scrubber) {
+      this.scrubber.disabled = false;
       this.scrubber.min = 0;
       this.scrubber.max = this.frameCount - 1;
       this.scrubber.value = 0;
@@ -547,11 +580,21 @@ class SpriteAnimationPlayer {
 
   renderFrame(frameIdx) {
     if (!this.canvas || !this.ctx) return;
-    const idx = Math.max(0, Math.min(frameIdx, this.frameCount - 1));
+    const isStatic = this.frameCount <= 1 || (this.rows === 1 && this.columns === 1);
+    const idx = isStatic ? 0 : Math.max(0, Math.min(frameIdx, this.frameCount - 1));
     this.currentFrame = idx;
 
-    let sx, sy;
-    if (this.activeTrack) {
+    let sx = 0;
+    let sy = 0;
+    let fw = this.frameWidth;
+    let fh = this.frameHeight;
+
+    if (isStatic) {
+      sx = 0;
+      sy = 0;
+      fw = this.image?.naturalWidth || this.frameWidth;
+      fh = this.image?.naturalHeight || this.frameHeight;
+    } else if (this.activeTrack) {
       const col = idx % this.columns;
       const row = this.activeTrack.row;
       sx = col * this.frameWidth;
@@ -572,7 +615,7 @@ class SpriteAnimationPlayer {
     if (this.image && this.image.complete && this.image.naturalWidth > 0) {
       this.ctx.drawImage(
         this.image,
-        sx, sy, this.frameWidth, this.frameHeight,
+        sx, sy, fw, fh,
         0, 0, this.canvas.width, this.canvas.height
       );
     }
@@ -582,8 +625,12 @@ class SpriteAnimationPlayer {
       this.scrubber.value = idx;
     }
     if (this.frameCounter) {
-      const trackSuffix = this.activeTrackName ? ` (${this.activeTrackName})` : '';
-      this.frameCounter.textContent = `Frame: ${idx + 1} / ${this.frameCount}${trackSuffix}`;
+      if (isStatic) {
+        this.frameCounter.textContent = 'Single Image (Static)';
+      } else {
+        const trackSuffix = this.activeTrackName ? ` (${this.activeTrackName})` : '';
+        this.frameCounter.textContent = `Frame: ${idx + 1} / ${this.frameCount}${trackSuffix}`;
+      }
     }
     if (this.frameTimestamp) {
       const sec = this.fps > 0 ? (idx / this.fps).toFixed(2) : '0.00';
@@ -592,6 +639,10 @@ class SpriteAnimationPlayer {
   }
 
   play() {
+    if (this.frameCount <= 1 || (this.rows === 1 && this.columns === 1)) {
+      this.pause();
+      return;
+    }
     this.isPlaying = true;
     if (this.playPauseIcon) this.playPauseIcon.textContent = '⏸';
     if (this.playPauseText) this.playPauseText.textContent = 'Pause';

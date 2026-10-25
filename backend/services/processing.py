@@ -485,6 +485,9 @@ def build_metadata(
     palette: str = "original",
     outline: bool = False,
 ) -> dict:
+    is_static = (rows == 1 and columns == 1) or frame_count <= 1
+    actual_fps = 1 if is_static else fps
+    actual_loop = False if is_static else loop
     meta: dict[str, Any] = {
         "schema_version": 1,
         "name": name,
@@ -494,8 +497,9 @@ def build_metadata(
         "rows": rows,
         "columns": columns,
         "frame_count": frame_count,
-        "fps": fps,
-        "loop": loop,
+        "fps": actual_fps,
+        "loop": actual_loop,
+        "is_static": is_static,
         "source": {
             "prompt": prompt,
             "style": style,
