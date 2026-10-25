@@ -20,6 +20,7 @@ styles:
     negative: "pixel art, 8-bit, cartoon, low quality, blurry, deformed, sketch, watermark, text"
 
 grid_notes:
+  "1x1":  "single complete standalone 2D game asset, full view centered, one single subject only, no multiple frames, not a sprite sheet, no duplicates"
   "1x4":  "4 animation frames in a single row, left to right"
   "1x6":  "6 animation frames in a single row, left to right"
   "1x8":  "8 animation frames in a single row, left to right"

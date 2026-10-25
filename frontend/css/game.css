@@ -1585,3 +1585,57 @@ body.game-page .footer {
     font-size: 1.5rem;
   }
 }
+
+/* ── Level & High Score HUD & Modal Styling ────────────────── */
+.hud-cell.level-cell {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(234, 88, 12, 0.18));
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fde68a;
+}
+
+.hud-cell.hiscore-cell {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.22), rgba(202, 138, 4, 0.22));
+  border-color: rgba(234, 179, 8, 0.5);
+  color: #fef08a;
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.2);
+}
+
+.go-hiscore-row {
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px dashed rgba(234, 179, 8, 0.4);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.go-hiscore-row .go-label {
+  color: #fef08a;
+  font-weight: 700;
+}
+
+.go-hiscore-row .go-value {
+  color: #facc15;
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(234, 179, 8, 0.4);
+}
+
+.go-new-record {
+  background: linear-gradient(90deg, #ec4899, #f59e0b, #06b6d4, #ec4899);
+  background-size: 300% 100%;
+  animation: rainbowShift 3s linear infinite;
+  color: #ffffff;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 800;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  text-align: center;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.5);
+  letter-spacing: 0.5px;
+}
+
+@keyframes rainbowShift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}

@@ -104,6 +104,21 @@ class GameSandbox {
     this.goTotal       = document.getElementById('go-total');
     this.restartBtn    = document.getElementById('restart-btn');
 
+    // ── Level & High Score Progression ──────────────────────────
+    this.currentLevel    = 1;
+    this.highScore       = parseInt(localStorage.getItem('spriteforge_high_score') || '0', 10);
+    this.hudLevel        = document.getElementById('hud-level');
+    this.hudHiscore      = document.getElementById('hud-hiscore');
+    this.pauseLevel      = document.getElementById('pause-level');
+    this.pauseHiscore    = document.getElementById('pause-hiscore');
+    this.goLevel         = document.getElementById('go-level');
+    this.goHiscore       = document.getElementById('go-hiscore');
+    this.goNewRecord     = document.getElementById('go-new-record');
+
+    // ── Obstacles State ─────────────────────────────────────────
+    this.obstacles       = [];
+    this._lastObstacleSpawnX = 500;
+
     // ── Real-Time Asset Integration State ───────────────────────
     this.incomingAssets      = [];
     this.unreadIncomingCount = 0;
@@ -175,7 +190,7 @@ class GameSandbox {
         fetch('/api/sprites').then(r => r.json()).then(gallery => {
           const item = Array.isArray(gallery) ? gallery.find(s => s.name === targetSprite) : null;
           if (item) {
-            this.ingestSpriteAsCharacter({
+            this.ingestSprite({
               name: item.name,
               imageUrl: item.image_url,
               metadata: item.metadata || {},
@@ -363,9 +378,12 @@ class GameSandbox {
     const dist  = Math.round(this.distanceMeters || 0);
     const coins = this.car ? (this.car.coins || 0) : 0;
     const score = Math.round((this.totalScore || 0) + dist);
-    if (this.pauseDist)  this.pauseDist.textContent  = `${dist} m`;
-    if (this.pauseCoins) this.pauseCoins.textContent = `${coins}`;
-    if (this.pauseScore) this.pauseScore.textContent = `${score} pts`;
+    const lvl   = this._getLevel(dist);
+    if (this.pauseDist)    this.pauseDist.textContent    = `${dist} m`;
+    if (this.pauseLevel)   this.pauseLevel.textContent   = `Level ${lvl}`;
+    if (this.pauseCoins)   this.pauseCoins.textContent   = `${coins}`;
+    if (this.pauseScore)   this.pauseScore.textContent   = `${score} pts`;
+    if (this.pauseHiscore) this.pauseHiscore.textContent = `${this.highScore} pts`;
 
     this._updatePauseSoundBtn();
 
@@ -518,54 +536,118 @@ class GameSandbox {
     }
   }
 
+  /* ── Road Elevation, Undulating Hills & Progressive Difficulty ── */
+  getRoadElevation(worldX) {
+    if (worldX < 180) return 0; // Flat safe runway for start pad
+    const distM = (worldX - 180) / 60;
+
+    // Difficulty curve scaling across progressive level milestones
+    let diff = 0.35;
+    if (distM > 100)  diff = 0.35 + Math.min(1.0, (distM - 100) / 400) * 0.45;  // Level 2 (100-500m): 0.35 -> 0.80
+    if (distM > 500)  diff = 0.80 + Math.min(1.0, (distM - 500) / 500) * 0.50;  // Level 3 (500-1000m): 0.80 -> 1.30
+    if (distM > 1000) diff = 1.30 + Math.min(1.0, (distM - 1000) / 500) * 0.50; // Level 4 (1000-1500m): 1.30 -> 1.80
+    if (distM > 1500) diff = 1.80 + Math.min(1.0, (distM - 1500) / 1000) * 0.60;// Level 5+ (1500m+): 1.80 -> 2.40
+
+    // Multi-frequency harmonic wave synthesis:
+    // Low frequency rolling hill
+    const h1 = Math.sin(worldX * 0.0030) * 42;
+    // Medium frequency undulating crests
+    const h2 = Math.sin(worldX * 0.0072 + 1.1) * 24;
+    // High frequency bumps and ridges
+    const h3 = Math.cos(worldX * 0.0145) * 10;
+    // Occasional dramatic crests/dips for big jumps and stunts
+    const crestSignal = Math.sin(worldX * 0.0014);
+    const crest = crestSignal > 0.5 ? Math.sin((crestSignal - 0.5) * Math.PI) * 45 : 0;
+
+    const blend = Math.min(1, Math.max(0, (worldX - 180) / 240));
+    return (h1 + h2 + h3 + crest) * diff * blend;
+  }
+
+  getRoadSlope(worldX) {
+    const delta = 10;
+    const e1 = this.getRoadElevation(worldX - delta);
+    const e2 = this.getRoadElevation(worldX + delta);
+    // Road elevation is positive upward (so canvas Y is -elevation)
+    const dy = -(e2 - e1);
+    const dx = delta * 2;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  }
+
+  /* ── Level Progression Milestones: 100m -> 500m -> 1000m -> 1500m -> on ── */
+  _getLevel(distM) {
+    if (distM < 100) return 1;
+    if (distM < 500) return 2;
+    if (distM < 1000) return 3;
+    if (distM < 1500) return 4;
+    return 5 + Math.floor((distM - 1500) / 500);
+  }
+
+  _getLevelName(lvl) {
+    switch (lvl) {
+      case 1: return 'Level 1 (0-100m)';
+      case 2: return 'Level 2 (100-500m)';
+      case 3: return 'Level 3 (500-1000m)';
+      case 4: return 'Level 4 (1000-1500m)';
+      default: {
+        const start = 1500 + (lvl - 5) * 500;
+        const end   = start + 500;
+        return `Level ${lvl} (${start}-${end}m)`;
+      }
+    }
+  }
+
   _setCarGroundY() {
     const biome = this.renderer.currentBiome;
     const groundLineY = this.H * biome.groundLine;
-    this.groundY = groundLineY - 31; // tyre bottom (wy=16, r=15) firmly plants on groundLineY
+    const elev = this.getRoadElevation(this.cameraX);
+    this.groundY = groundLineY - elev - 31; // tyre bottom (wy=16, r=15) firmly plants on undulating road
     if (this.car.onGround) {
       this.car.y = this.groundY;
     }
     if (this.coins) {
       this.coins.forEach(c => {
         if (c.yOffset !== undefined) {
-          c.wy = groundLineY - c.yOffset;
+          const cElev = this.getRoadElevation(c.wx);
+          c.wy = groundLineY - cElev - c.yOffset;
         }
       });
     }
   }
 
-  /* ── Endless Procedural Collectibles (Issue #49) ─────────────── */
+  /* ── Endless Procedural Collectibles & Obstacles Spawner ───────── */
   _spawnInitialCollectibles() {
     this.coins = [];
     this.fuelCans = [];
+    this.obstacles = [];
     this._lastCoinSpawnX = 300;
-    this._lastFuelSpawnX = 600;
+    this._lastFuelSpawnX = 12000; // Strictly every 200m (60px * 200 = 12,000px)
+    this._lastObstacleSpawnX = 500;
+    this.currentLevel = 1;
     this._generateCollectiblesAhead(this.cameraX + (this.W || 800) + 1600);
   }
 
   _generateCollectiblesAhead(targetX) {
     const biome = this.renderer.currentBiome;
     const groundLineY = this.H * biome.groundLine;
-    const gY = groundLineY;
 
-    // ── Infinite Procedural Coins (Formations & Star Coins, Issue #49)
+    // ── Infinite Procedural Coins (Formations & Star Coins) ─────────
     while (this._lastCoinSpawnX < targetX) {
       const startX = this._lastCoinSpawnX;
       const formationType = Math.floor(Math.random() * 3);
 
       if (formationType === 0) {
-        // Formation 1: Rolling hill contours following ground wave curve
+        // Formation 1: Rolling hill contours following road wave curve
         const count = 5 + Math.floor(Math.random() * 4);
         const spacing = 55 + Math.random() * 15;
-        const waveFreq = 0.01 + Math.random() * 0.008;
         for (let i = 0; i < count; i++) {
           const wx = startX + i * spacing;
-          const yOffset = 35 + Math.sin(wx * waveFreq) * 22;
+          const elev = this.getRoadElevation(wx);
+          const yOffset = 36 + Math.sin(wx * 0.01) * 16;
           const isStar = (i === Math.floor(count / 2) && Math.random() > 0.4);
           this.coins.push({
             wx,
             yOffset,
-            wy: gY - yOffset,
+            wy: groundLineY - elev - yOffset,
             r: 14,
             collected: false,
             animT: Math.random() * Math.PI * 2,
@@ -579,17 +661,18 @@ class GameSandbox {
         const count = 7 + Math.floor(Math.random() * 3);
         const archWidth = 380 + Math.random() * 100;
         const step = archWidth / (count - 1);
-        const peakHeight = 100 + Math.random() * 25; // 100-125px high above ground
+        const peakHeight = 100 + Math.random() * 25;
         for (let i = 0; i < count; i++) {
           const t = i / (count - 1);
           const wx = startX + i * step;
+          const elev = this.getRoadElevation(wx);
           const archY = Math.sin(t * Math.PI) * peakHeight;
-          const yOffset = 30 + archY;
+          const yOffset = 32 + archY;
           const isApex = (i >= Math.floor(count / 2) - 1 && i <= Math.floor(count / 2) + 1);
           this.coins.push({
             wx,
             yOffset,
-            wy: gY - yOffset,
+            wy: groundLineY - elev - yOffset,
             r: 14,
             collected: false,
             animT: Math.random() * Math.PI * 2,
@@ -604,11 +687,12 @@ class GameSandbox {
         const spacing = 55;
         for (let i = 0; i < count; i++) {
           const wx = startX + i * spacing;
-          const yOffset = 115 + Math.random() * 20; // High altitude reachable by jumping
+          const elev = this.getRoadElevation(wx);
+          const yOffset = 115 + Math.random() * 20;
           this.coins.push({
             wx,
             yOffset,
-            wy: gY - yOffset,
+            wy: groundLineY - elev - yOffset,
             r: 15,
             collected: false,
             animT: Math.random() * Math.PI * 2,
@@ -620,24 +704,90 @@ class GameSandbox {
       }
     }
 
-    // ── Extended Fuel Endurance (Procedural Canisters every 250–350 meters, Issue #49)
-    // In Biome Sandbox: 60 px = 1 meter. 250-350m = 15,000 - 21,000 px.
+    // ── Petrol Refill Every 200m (Strictly 200m, 400m, 600m, 800m, 1000m...) ─
+    // 60 px = 1 meter. 200m = 12,000 px.
     while (this._lastFuelSpawnX < targetX) {
+      const distM = Math.round(this._lastFuelSpawnX / 60);
       this.fuelCans.push({
         wx: this._lastFuelSpawnX,
-        r: 18,
+        r: 20,
+        distM,
         collected: false,
       });
-      const nextIntervalPx = (250 + Math.random() * 100) * 60;
-      this._lastFuelSpawnX += nextIntervalPx;
+      this._lastFuelSpawnX += 200 * 60; // strictly 200 meters (12,000px)
+    }
+
+    // ── Procedural Obstacles (Boulders, Barriers, Spikes & Launch Ramps) ─
+    // Spawns start after 50m (safe start pad) and scale by level distance
+    while (this._lastObstacleSpawnX < targetX) {
+      const distM = Math.max(0, this._lastObstacleSpawnX / 60);
+      const lvl = this._getLevel(distM);
+
+      // Select obstacle type based on level
+      let type = 'rock';
+      const roll = Math.random();
+      if (lvl === 1) {
+        type = roll > 0.4 ? 'rock' : 'ramp';
+      } else if (lvl === 2) {
+        if (roll < 0.35) type = 'rock';
+        else if (roll < 0.65) type = 'barrier';
+        else type = 'ramp';
+      } else {
+        // Level 3+ (Steep peaks, hazards & ramps)
+        if (roll < 0.28) type = 'rock';
+        else if (roll < 0.54) type = 'barrier';
+        else if (roll < 0.78) type = 'spike';
+        else type = 'ramp';
+      }
+
+      let w = 36;
+      let h = 28;
+      if (type === 'barrier') { w = 30; h = 32; }
+      else if (type === 'spike') { w = 34; h = 26; }
+      else if (type === 'ramp') { w = 48; h = 26; }
+
+      this.obstacles.push({
+        wx: this._lastObstacleSpawnX,
+        type,
+        w,
+        h,
+        hit: false,
+        cleared: false,
+        used: false,
+      });
+
+      // Frequency based on current level milestone
+      let stepPx = 2800 + Math.random() * 1200; // Level 1: 45-65m
+      if (lvl === 2) stepPx = 2000 + Math.random() * 1000; // Level 2: 33-50m
+      if (lvl === 3) stepPx = 1500 + Math.random() * 800;  // Level 3: 25-38m
+      if (lvl >= 4)  stepPx = 1200 + Math.random() * 600;  // Level 4+: 20-30m
+
+      // If ramp was spawned, occasionally place a hazard ~200px after it for stunt jump clearing!
+      if (type === 'ramp' && Math.random() > 0.4) {
+        const hazardX = this._lastObstacleSpawnX + 220;
+        const hazardType = lvl >= 3 && Math.random() > 0.5 ? 'spike' : 'rock';
+        this.obstacles.push({
+          wx: hazardX,
+          type: hazardType,
+          w: hazardType === 'spike' ? 34 : 36,
+          h: hazardType === 'spike' ? 26 : 28,
+          hit: false,
+          cleared: false,
+          used: false,
+        });
+        stepPx += 400;
+      }
+
+      this._lastObstacleSpawnX += stepPx;
     }
   }
 
   _cullCollectibles() {
-    // Zero memory leaks: automatically cull collected or off-screen items behind camera (Issue #49)
+    // Cull off-screen items behind camera cutoff (zero memory leaks)
     const cutoff = this.cameraX - 500;
-    this.coins    = this.coins.filter(c => !c.collected && c.wx >= cutoff);
-    this.fuelCans = this.fuelCans.filter(fc => !fc.collected && fc.wx >= cutoff);
+    this.coins     = this.coins.filter(c => !c.collected && c.wx >= cutoff);
+    this.fuelCans  = this.fuelCans.filter(fc => !fc.collected && fc.wx >= cutoff);
+    this.obstacles = this.obstacles.filter(obs => obs.wx >= cutoff);
   }
 
   /* ── Main Loop ───────────────────────────────────────────────── */
@@ -661,13 +811,16 @@ class GameSandbox {
       this._updateHUD();
       return;
     }
-    const car    = this.car;
-    const biome  = this.renderer.currentBiome;
+    const car         = this.car;
+    const biome       = this.renderer.currentBiome;
     const groundLineY = this.H * biome.groundLine;
-    const gY     = groundLineY - 31;
-    const gravity  = biome.id === 'moon' ? 180 : 600;
-    const friction = biome.id === 'moon' ? 0.97 : 0.90;
-    const maxSpeed = biome.id === 'moon' ? 7 : 12;
+    const currentElev = this.getRoadElevation(this.cameraX);
+    const slopeAngle  = this.getRoadSlope(this.cameraX);
+    const gY          = groundLineY - currentElev - 31;
+    const gravity     = biome.id === 'moon' ? 180 : 600;
+    const friction    = biome.id === 'moon' ? 0.97 : 0.90;
+    const maxSpeed    = biome.id === 'moon' ? 7 : 12;
+    const screenCarX  = this.W * 0.35;
 
     // ── Game over stall ─────────────────────────────────────────
     if (this._gameOver) {
@@ -686,7 +839,7 @@ class GameSandbox {
     }
 
     // ── Input → forces ──────────────────────────────────────────
-    // W/D/↑/→ = Gas/Tilt-Right | S/A/↓/← = Brake/Tilt-Left (Spec 1)
+    // W/D/↑/→ = Gas/Tilt-Right | S/A/↓/← = Brake/Tilt-Left
     const gasDown   = (this.keys['ArrowRight'] || this.keys['KeyD'] ||
                        this.keys['ArrowUp']    || this.keys['KeyW'] ||
                        this._touchState.gas);
@@ -698,8 +851,12 @@ class GameSandbox {
     car.braking  = !!brakeDown;
 
     if (car.onGround || this.characterMode) {
-      // Character mode: forward/backward/jump only — no car air-tilt, and
-      // the character keeps walking/running even while airborne (jumping).
+      // Slope gravity force (uphill decelerates, downhill accelerates!)
+      if (!this.characterMode) {
+        const slopeRad = (slopeAngle * Math.PI) / 180;
+        car.vx += Math.sin(slopeRad) * 460 * dt;
+      }
+
       if (car.fuel > 0 && gasDown) car.vx += 280 * dt;
       if (brakeDown) {
         if (car.vx > 0.5) {
@@ -710,9 +867,9 @@ class GameSandbox {
         }
       }
     } else {
-      // Vehicle mode, mid-air: A/D or ←/→ apply rotational torque (Spec 1, Issue #33)
-      if (gasDown)   car.angle += 90 * dt;  // Clockwise tilt-right
-      if (brakeDown) car.angle -= 90 * dt;  // Counter-clockwise tilt-left
+      // Vehicle mode, mid-air: A/D or ←/→ apply rotational torque
+      if (gasDown)   car.angle += 95 * dt;  // Clockwise tilt-right
+      if (brakeDown) car.angle -= 95 * dt;  // Counter-clockwise tilt-left
     }
 
     // Friction & max speed
@@ -720,13 +877,18 @@ class GameSandbox {
     car.vx = Math.max(-maxSpeed * 60 * 0.4, Math.min(maxSpeed * 60, car.vx));
     car.speed = car.vx / 60;
 
-    // Gravity
+    // Gravity & Ground Tilt
     if (!car.onGround) {
       car.vy += gravity * dt;
       if (!gasDown && !brakeDown) car.angle += (car.vx > 0 ? 1.0 : -1.0) * dt * 15;
     } else {
       car.vy = 0;
-      car.angle *= 0.78; // gradually level on ground
+      // Align smoothly with the road slope contour
+      if (!this.characterMode) {
+        car.angle = car.angle * 0.70 + slopeAngle * 0.30;
+      } else {
+        car.angle = 0;
+      }
     }
 
     // ── Position update ─────────────────────────────────────────
@@ -737,24 +899,35 @@ class GameSandbox {
     const airWheelSpin = (!car.onGround && car.throttle > 0) ? (350 * dt) : 0;
     this.wheelRotation = (this.wheelRotation || 0) + (car.vx * dt + airWheelSpin) / 15;
 
-    // Distance meter in meters (Issue #33)
+    // Distance meter in meters
     if (car.vx > 0) this.distanceMeters += (car.vx * dt) / 60;
+
+    // ── Progressive Level Milestones: 100m -> 500m -> 1000m -> 1500m -> on ──
+    const currentMilestoneLvl = this._getLevel(this.distanceMeters);
+    if (currentMilestoneLvl > this.currentLevel) {
+      this.currentLevel = currentMilestoneLvl;
+      const lvlBonus = currentMilestoneLvl * 250;
+      this.totalScore += lvlBonus;
+      this._spawnPopup(`🚩 LEVEL ${currentMilestoneLvl} REACHED! +${lvlBonus}`, screenCarX, car.y - 60);
+      this.renderer.particles.emitCoinPickup(screenCarX, car.y);
+      this.audio.playCoinPickup?.();
+    }
 
     // ── Ground detection ────────────────────────────────────────
     if (car.y >= gY) {
-      // Air-time bonus (Issue #33)
+      // Air-time bonus
       if (!car.onGround && this.currentAirTime > 0.7) {
         const airPts = Math.round(this.currentAirTime * 150);
         this.stuntBonus += airPts;
         this.totalScore += airPts;
-        this._spawnPopup(`+${airPts} AIR`, this.W * 0.35, gY - 60);
+        this._spawnPopup(`+${airPts} AIR`, screenCarX, gY - 60);
       }
-      // Flip stunt detection (Issue #33)
+      // Flip stunt detection
       if (!car.onGround && Math.abs(this.airAngleDelta) >= 340) {
         const stuntName = car.angle > 0 ? 'FRONTFLIP!' : 'BACKFLIP!';
         this.stuntBonus  += 500;
         this.totalScore  += 500;
-        this._spawnPopup(`${stuntName} +500`, this.W * 0.35, gY - 80);
+        this._spawnPopup(`${stuntName} +500`, screenCarX, gY - 80);
         this.audio.playCoinPickup?.();
       }
 
@@ -763,29 +936,31 @@ class GameSandbox {
       this.airAngleDelta  = 0;
       this._lastAngle     = car.angle;
 
-      // Flip crash on hard landing
-      if (Math.abs(car.angle) > 120 && Math.abs(car.vx) > 3 * 60) {
+      // Flip crash on bad landing angle relative to slope
+      if (Math.abs(car.angle - slopeAngle) > 105 && Math.abs(car.vx) > 3 * 60) {
         this._triggerCrash('flip');
         return;
       }
     } else if (car.onGround) {
-      car.onGround = false;
-      this._lastAngle = car.angle;
+      // Check if car launched off a crest / downhill drop
+      if (car.y < gY - 5) {
+        car.onGround = false;
+        this._lastAngle = car.angle;
+      }
     } else {
       this.currentAirTime += dt;
       this.airAngleDelta  += car.angle - this._lastAngle;
       this._lastAngle      = car.angle;
     }
 
-    // ── Fuel Consumption (Rebalanced for Extended Endurance, Issue #49) ──
-    // Baseline idle drain decreased to 0.4%/s (down from 1.2%/s)
+    // ── Fuel Consumption (Tuned for Engaging 200m Canister Milestones) ──
     if (car.fuel > 0) {
-      let drain = 0.4 * dt;
-      if (car.throttle > 0) drain += 2.4 * dt;
+      let drain = 0.55 * dt;
+      if (car.throttle > 0) drain += 2.65 * dt;
       car.fuel = Math.max(0, car.fuel - drain);
     }
 
-    // Low fuel red warning alarm < 20% (Issue #33)
+    // Low fuel red warning alarm < 20%
     if (car.fuel < 20 && !this._fuelAlert) {
       this._fuelAlert = true;
       this.audio.startFuelAlert?.();
@@ -799,7 +974,7 @@ class GameSandbox {
       if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
     }
 
-    // Out of Fuel Game Over: fuel=0 AND vehicle nearly stopped (Issue #33)
+    // Out of Fuel Game Over: fuel=0 AND vehicle nearly stopped
     if (car.fuel === 0) {
       if (Math.abs(car.vx) < 12) {
         this._lowSpeedTime += dt;
@@ -812,9 +987,8 @@ class GameSandbox {
     }
 
     // ── Particle emission ────────────────────────────────────────
-    const particles  = this.renderer.particles;
-    const screenCarX = this.W * 0.35;
-    const wheelY     = car.y + 31;
+    const particles = this.renderer.particles;
+    const wheelY    = car.y + 31;
     if (car.onGround && Math.abs(car.vx) > 1) {
       particles.emitTireDirt(screenCarX - 30, wheelY, car.speed, true);
       particles.emitTireDirt(screenCarX + 32, wheelY, car.speed, true);
@@ -823,14 +997,15 @@ class GameSandbox {
       particles.emitExhaust(screenCarX - 52, car.y + 10, car.speed);
     }
 
-    // ── Procedural Endless Generation Ahead (Issue #49) ─────────
+    // ── Procedural Endless Generation Ahead ─────────────────────
     this._generateCollectiblesAhead(this.cameraX + this.W + 1600);
 
-    // ── Coin collection (Issue #33 & Issue #49) ─────────────────
+    // ── Coin collection ─────────────────────────────────────────
     this.coins.forEach(coin => {
       if (coin.collected) return;
       coin.animT += dt * 3;
-      coin.wy = gY - (coin.yOffset || 40) + Math.sin(coin.animT) * 8;
+      const coinElev = this.getRoadElevation(coin.wx);
+      coin.wy = groundLineY - coinElev - (coin.yOffset || 40) + Math.sin(coin.animT) * 8;
       const coinSX = coin.wx - this.cameraX + screenCarX;
       const dx = coinSX - screenCarX;
       const dy = coin.wy - car.y;
@@ -844,13 +1019,15 @@ class GameSandbox {
       }
     });
 
-    // ── Fuel canister collection (restores 100%, Issue #33) ─────
+    // ── Petrol Canister Collection (Every 200m) ─────────────────
     this.fuelCans.forEach(fc => {
       if (fc.collected) return;
-      const fcSX = fc.wx - this.cameraX + screenCarX;
-      const dx   = fcSX - screenCarX;
-      const dy   = (gY - 20) - car.y;
-      if (Math.sqrt(dx * dx + dy * dy) < fc.r + 28) {
+      const fcElev = this.getRoadElevation(fc.wx);
+      const fcY    = groundLineY - fcElev - 20;
+      const fcSX   = fc.wx - this.cameraX + screenCarX;
+      const dx     = fcSX - screenCarX;
+      const dy     = fcY - car.y;
+      if (Math.sqrt(dx * dx + dy * dy) < fc.r + 30) {
         fc.collected = true;
         car.fuel = 100; // full restore
         if (this._fuelAlert) {
@@ -859,12 +1036,77 @@ class GameSandbox {
           this.hudFuelCell?.classList.remove('fuel-warning');
           if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
         }
-        particles.emitCoinPickup(fcSX, gY - 20);
-        this._spawnPopup('⛽ FULL!', fcSX, gY - 50);
+        this.totalScore += 100;
+        particles.emitCoinPickup(fcSX, fcY);
+        this.audio.playCoinPickup?.();
+        this._spawnPopup(`⛽ ${fc.distM}m FULL TANK! +100`, fcSX, fcY - 45);
       }
     });
 
-    // ── Cull off-screen & collected items (Issue #49) ────────────
+    // ── Obstacle Collisions & Space Jump Clearance ──────────────
+    this.obstacles.forEach(obs => {
+      if (obs.hit || obs.cleared) return;
+      const obsElev = this.getRoadElevation(obs.wx);
+      const obsY    = groundLineY - obsElev;
+      const obsSX   = obs.wx - this.cameraX + screenCarX;
+      const dx      = obsSX - screenCarX;
+
+      // Has the player driven past the obstacle safely?
+      if (dx < -70) {
+        obs.cleared = true;
+        return;
+      }
+
+      // In interaction zone
+      if (Math.abs(dx) < (obs.w / 2 + 22)) {
+        const carBottomY = car.y + 31;
+        const obsTopY    = obsY - obs.h;
+
+        // 1. Cleared over the top while airborne (Space Jump or hill launch)
+        if (carBottomY < obsTopY - 6) {
+          if (!obs.cleared && obs.type !== 'ramp') {
+            obs.cleared = true;
+            this.stuntBonus += 200;
+            this.totalScore += 200;
+            this.audio.playCoinPickup?.();
+            this._spawnPopup('⚡ OBSTACLE CLEARED! +200', screenCarX, car.y - 45);
+          }
+          return;
+        }
+
+        // 2. Launch Ramp Trigger
+        if (obs.type === 'ramp') {
+          if (!obs.used) {
+            obs.used = true;
+            obs.cleared = true;
+            car.vy = -430; // Springboard launch!
+            car.vx = Math.max(car.vx, 320);
+            car.onGround = false;
+            car.angle -= 12;
+            this.stuntBonus += 150;
+            this.totalScore += 150;
+            this.audio.playJump?.();
+            particles.emitTireDirt(screenCarX, car.y + 31, 10, true);
+            this._spawnPopup('🚀 RAMP LAUNCH! +150', screenCarX, car.y - 45);
+          }
+          return;
+        }
+
+        // 3. Collision with Obstacle
+        if (!obs.hit) {
+          obs.hit = true;
+          car.vx *= 0.32; // Significant slowdown
+          car.vy = -120;  // Violent bump
+          car.angle += (Math.random() > 0.5 ? 18 : -18);
+          car.fuel = Math.max(0, car.fuel - 8); // Fuel penalty
+          this.audio.playCrash?.();
+          particles.emitCrash(screenCarX, car.y + 15);
+          this._spawnPopup('💥 IMPACT! -8% FUEL', screenCarX, car.y - 35);
+        }
+      }
+    });
+
+    // ── Cull off-screen & collected items ────────────────────────
     this._cullCollectibles();
 
     // ── Floating popup lifetime ──────────────────────────────────
@@ -878,7 +1120,7 @@ class GameSandbox {
       this.audio.updateEngineSound?.(car.speed, car.throttle);
     }
 
-    // ── HUD update (Issue #33) ───────────────────────────────────
+    // ── HUD update ───────────────────────────────────────────────
     this._updateHUD();
   }
 
@@ -933,24 +1175,38 @@ class GameSandbox {
     }
   }
 
-  /* ── Show Game Over Summary (Issue #33) ─────────────────────── */
+  /* ── Show Game Over Summary ─────────────────────────────────── */
   _showGameOver() {
     if (!this.crashOverlay) return;
     const dist  = Math.round(this.distanceMeters);
     const total = this.totalScore + dist;
-    if (this.goIcon)   this.goIcon.textContent  = this._outOfFuel ? '⛽' : '💥';
-    if (this.goTitle)  this.goTitle.textContent  = this._outOfFuel ? 'Out of Fuel!' : 'Crashed!';
-    if (this.goSub)    this.goSub.textContent    = this._outOfFuel
-      ? 'Tank empty! Collect fuel canisters next time.'
-      : 'Your vehicle flipped out of control.';
-    if (this.goDist)   this.goDist.textContent   = `${dist} m`;
-    if (this.goCoins)  this.goCoins.textContent  = `${this.car.coins} 🪙`;
-    if (this.goStunts) this.goStunts.textContent = `${this.stuntBonus} pts`;
-    if (this.goTotal)  this.goTotal.textContent  = `${total} pts`;
+    const lvl   = this._getLevel(dist);
+    let isNewRecord = false;
+    if (total > this.highScore) {
+      this.highScore = total;
+      try {
+        localStorage.setItem('spriteforge_high_score', String(total));
+      } catch (_) {}
+      isNewRecord = true;
+    }
+
+    if (this.goIcon)      this.goIcon.textContent      = this._outOfFuel ? '⛽' : '💥';
+    if (this.goTitle)     this.goTitle.textContent     = this._outOfFuel ? 'Out of Fuel!' : 'Crashed!';
+    if (this.goSub)       this.goSub.textContent       = this._outOfFuel
+      ? 'Tank empty! Look out for petrol canisters every 200m.'
+      : 'Your vehicle flipped out or impacted an obstacle.';
+    if (this.goDist)      this.goDist.textContent      = `${dist} m`;
+    if (this.goLevel)     this.goLevel.textContent     = `Level ${lvl}`;
+    if (this.goCoins)     this.goCoins.textContent     = `${this.car.coins} 🪙`;
+    if (this.goStunts)    this.goStunts.textContent    = `${this.stuntBonus} pts`;
+    if (this.goTotal)     this.goTotal.textContent     = `${total} pts`;
+    if (this.goHiscore)   this.goHiscore.textContent   = `${this.highScore} pts`;
+    if (this.goNewRecord) this.goNewRecord.hidden      = !isNewRecord;
+
     this.crashOverlay.hidden = false;
   }
 
-  /* ── Explicit Spawn & Clear Controls (Issue #44) ──────────────── */
+  /* ── Explicit Spawn & Clear Controls ────────────────────────── */
   spawnCar(options = {}) {
     this.hasVehicle = true;
     if (options.defaultCar) {
@@ -979,6 +1235,8 @@ class GameSandbox {
     this.customSprite        = null;
     this.customVehicleSprite = null; // clear vehicle skin
     this.worldSprites        = [];   // clear all placed world sprites
+    this.obstacles           = [];
+    this.currentLevel        = 1;
     this.floatingPopups = [];
     this.cameraX        = 0;
     this.distanceMeters = 0;
@@ -994,6 +1252,7 @@ class GameSandbox {
     this.hudFuelCell?.classList.remove('fuel-warning');
     if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
     if (this.crashOverlay) this.crashOverlay.hidden = true;
+    if (this.goNewRecord) this.goNewRecord.hidden = true;
     this.audio.stopEngine?.();
     this.audio.stopFuelAlert?.();
     this._updateHUD();
@@ -1023,6 +1282,10 @@ class GameSandbox {
     this.totalScore     = 0;
     this.currentAirTime = 0;
     this.airAngleDelta  = 0;
+    this.currentLevel   = 1;
+    this.obstacles      = [];
+    this._lastObstacleSpawnX = 500;
+    this._lastFuelSpawnX     = 12000; // Strictly every 200m
     this.floatingPopups = [];
     this._gameOver      = false;
     this._outOfFuel     = false;
@@ -1032,6 +1295,7 @@ class GameSandbox {
     this.hudFuelCell?.classList.remove('fuel-warning');
     if (this.hudFuelWarn) this.hudFuelWarn.hidden = true;
     if (this.crashOverlay) this.crashOverlay.hidden = true;
+    if (this.goNewRecord) this.goNewRecord.hidden = true;
     this.audio.stopFuelAlert?.();
     this._spawnInitialCollectibles();
     this._setCarGroundY();
@@ -1050,14 +1314,100 @@ class GameSandbox {
 
     const biome       = this.renderer.currentBiome;
     const groundLineY = H * biome.groundLine;
-    const gY          = groundLineY - 31;
     const carSX       = W * 0.35; // car screen X
+    const currentElev = this.getRoadElevation(this.cameraX);
+    const slopeAngle  = this.getRoadSlope(this.cameraX);
 
     // ── Background & Midground Placed World Sprites (Parallax) ───
     this._drawWorldSprites(ctx, 'background', biome, groundLineY, carSX);
     this._drawWorldSprites(ctx, 'midground',  biome, groundLineY, carSX);
 
-    // Draw uncollected coins — star icon for high-value crests and jump bonus (Issue #33 & #49)
+    // ── Dynamic Undulating Road Terrain Surface Polygon ─────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-20, H + 20);
+    const step = 8;
+    for (let sx = -20; sx <= W + 20; sx += step) {
+      const wx = this.cameraX + (sx - carSX);
+      const elev = this.getRoadElevation(wx);
+      const ry = groundLineY - elev;
+      ctx.lineTo(sx, ry);
+    }
+    ctx.lineTo(W + 20, H + 20);
+    ctx.closePath();
+
+    // Fill terrain with biome-tailored multi-stop gradients
+    const roadGrad = ctx.createLinearGradient(0, groundLineY - 120, 0, H);
+    if (biome.id === 'cyberpunk') {
+      roadGrad.addColorStop(0, '#0f172a');
+      roadGrad.addColorStop(0.3, '#1e1b4b');
+      roadGrad.addColorStop(1, '#050510');
+    } else if (biome.id === 'desert') {
+      roadGrad.addColorStop(0, '#d97706');
+      roadGrad.addColorStop(0.2, '#b45309');
+      roadGrad.addColorStop(1, '#78350f');
+    } else if (biome.id === 'moon') {
+      roadGrad.addColorStop(0, '#475569');
+      roadGrad.addColorStop(0.25, '#334155');
+      roadGrad.addColorStop(1, '#0f172a');
+    } else { // countryside
+      roadGrad.addColorStop(0, '#2e7d32');
+      roadGrad.addColorStop(0.18, '#5d4037');
+      roadGrad.addColorStop(1, '#3e2723');
+    }
+    ctx.fillStyle = roadGrad;
+    ctx.fill();
+
+    // Road Edge Ribbon / Curb
+    ctx.beginPath();
+    for (let sx = -20; sx <= W + 20; sx += step) {
+      const wx = this.cameraX + (sx - carSX);
+      const elev = this.getRoadElevation(wx);
+      const ry = groundLineY - elev;
+      if (sx === -20) ctx.moveTo(sx, ry);
+      else ctx.lineTo(sx, ry);
+    }
+    if (biome.id === 'cyberpunk') {
+      ctx.strokeStyle = '#00F0FF';
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = '#00F0FF';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (biome.id === 'desert') {
+      ctx.strokeStyle = '#FDE68A';
+      ctx.lineWidth = 3.0;
+      ctx.shadowColor = '#F59E0B';
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (biome.id === 'moon') {
+      ctx.strokeStyle = '#94A3B8';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#CBD5E1';
+      ctx.shadowBlur = 5;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else { // countryside
+      ctx.strokeStyle = '#81C784';
+      ctx.lineWidth = 4.0;
+      ctx.shadowColor = '#388E3C';
+      ctx.shadowBlur = 4;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+
+    // ── Draw Procedural Obstacles ────────────────────────────────
+    this.obstacles.forEach(obs => {
+      const ox = obs.wx - this.cameraX + carSX;
+      if (ox < -60 || ox > W + 60) return;
+      const obsElev = this.getRoadElevation(obs.wx);
+      const oy = groundLineY - obsElev;
+      this._drawObstacle(ctx, obs, ox, oy, biome.id);
+    });
+
+    // ── Draw Coins ───────────────────────────────────────────────
     this.coins.forEach(coin => {
       if (coin.collected) return;
       const cx = coin.wx - this.cameraX + carSX;
@@ -1088,7 +1438,41 @@ class GameSandbox {
       ctx.restore();
     });
 
-    // Draw floating score popups (Issue #33)
+    // ── Draw Petrol Canisters (Every 200m) ───────────────────────
+    this.fuelCans.forEach(fc => {
+      if (fc.collected) return;
+      const fx = fc.wx - this.cameraX + carSX;
+      if (fx < -50 || fx > W + 50) return;
+      const elev = this.getRoadElevation(fc.wx);
+      const fy = groundLineY - elev - 20;
+      ctx.save();
+      ctx.shadowColor = '#EF4444';
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = '#DC2626';
+      ctx.fillRect(fx - 12, fy - 20, 24, 28);
+      ctx.fillStyle = '#FFCDD2';
+      ctx.fillRect(fx - 8, fy - 16, 16, 8);
+      ctx.fillStyle = '#991B1B';
+      ctx.fillRect(fx - 4, fy - 26, 8, 6);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('⛽', fx, fy - 4);
+
+      // Distance indicator pill badge (e.g. 200m, 400m, 600m...)
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(fx - 22, fy - 40, 44, 14);
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(fx - 22, fy - 40, 44, 14);
+      ctx.fillStyle = '#FEF08A';
+      ctx.font = 'bold 9px Space Mono, monospace';
+      ctx.fillText(`${fc.distM}m`, fx, fy - 29);
+      ctx.restore();
+    });
+
+    // ── Draw Floating Score Popups ───────────────────────────────
     this.floatingPopups?.forEach(p => {
       ctx.save();
       ctx.globalAlpha = Math.max(0, p.alpha);
@@ -1100,30 +1484,10 @@ class GameSandbox {
       ctx.restore();
     });
 
-    // Draw fuel cans
-    this.fuelCans.forEach(fc => {
-      if (fc.collected) return;
-      const fx = fc.wx - this.cameraX + carSX;
-      if (fx < -30 || fx > W + 30) return;
-      const fy = groundLineY - 20;
-      ctx.save();
-      ctx.fillStyle = '#E53935';
-      ctx.fillRect(fx - 10, fy - 20, 20, 28);
-      ctx.fillStyle = '#FFCDD2';
-      ctx.fillRect(fx - 6,  fy - 16, 12, 8);
-      ctx.fillStyle = '#B71C1C';
-      ctx.fillRect(fx - 3,  fy - 24, 6, 6);
-      ctx.fillStyle = '#fff';
-      ctx.font = '8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('⛽', fx, fy - 4);
-      ctx.restore();
-    });
-
     // ── Ground-Level Placed World Sprites (Sorted behind Car) ────
     this._drawWorldSprites(ctx, 'ground', biome, groundLineY, carSX);
 
-    // Draw car / active sprite (single entity, single animated frame)
+    // ── Draw Car / Active Sprite ─────────────────────────────────
     if (this.hasVehicle) {
       // Dynamic suspension vibration and pitch
       const suspensionBob = (car.onGround && Math.abs(car.vx) > 5)
@@ -1133,23 +1497,24 @@ class GameSandbox {
         ? (car.throttle > 0 ? -1.8 : (car.braking ? 2.8 : 0))
         : 0;
 
-      // Realistic Contact Shadow on Ground (stays anchored on groundLineY when jumping!)
-      const distAboveGround = Math.max(0, gY - car.y);
+      // Realistic Contact Shadow on Road (hugs the undulating surface below the car)
+      const roadYUnderCar = groundLineY - currentElev;
+      const distAboveGround = Math.max(0, (roadYUnderCar - 31) - car.y);
       const shadowScale = Math.max(0.35, 1 - distAboveGround / 240);
       const shadowAlpha = Math.max(0.08, 0.42 * shadowScale);
 
       ctx.save();
       ctx.fillStyle = `rgba(0, 0, 0, ${shadowAlpha})`;
       ctx.beginPath();
-      ctx.ellipse(carSX, groundLineY + 1, 52 * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.ellipse(carSX, roadYUnderCar + 1, 52 * shadowScale, 6 * shadowScale, (slopeAngle * Math.PI) / 180, 0, Math.PI * 2);
       ctx.fill();
 
       // Additional tyre contact occlusion shadows when on the ground
       if (car.onGround) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
         ctx.beginPath();
-        ctx.ellipse(carSX - 30, groundLineY + 1, 16, 3, 0, 0, Math.PI * 2);
-        ctx.ellipse(carSX + 32, groundLineY + 1, 16, 3, 0, 0, Math.PI * 2);
+        ctx.ellipse(carSX - 30, roadYUnderCar + 1, 16, 3, (slopeAngle * Math.PI) / 180, 0, Math.PI * 2);
+        ctx.ellipse(carSX + 32, roadYUnderCar + 1, 16, 3, (slopeAngle * Math.PI) / 180, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -1157,7 +1522,7 @@ class GameSandbox {
       ctx.save();
       ctx.translate(carSX, car.y + suspensionBob);
       // A walking/running character shouldn't tilt/pitch like a car.
-      if (!this.characterMode) ctx.rotate((car.angle + pitchAngle) * Math.PI / 180);
+      if (!this.characterMode) ctx.rotate(((car.angle + pitchAngle) * Math.PI) / 180);
       this._drawCar(ctx, biome.id, groundLineY);
       ctx.restore();
     }
@@ -1172,6 +1537,108 @@ class GameSandbox {
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
     }
+  }
+
+  /* ── Procedural Obstacle Rendering (Boulders, Barriers, Spikes & Ramps) ─ */
+  _drawObstacle(ctx, obs, sx, sy, biomeId) {
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    if (obs.hit) {
+      ctx.globalAlpha = 0.5; // Visual feedback that it's already struck
+    }
+
+    if (obs.type === 'rock') {
+      // Rugged boulder with polygonal crags and highlights
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = biomeId === 'moon' ? '#64748B' : (biomeId === 'desert' ? '#92400E' : (biomeId === 'cyberpunk' ? '#334155' : '#57534E'));
+      ctx.beginPath();
+      ctx.moveTo(-18, 0);
+      ctx.lineTo(-20, -14);
+      ctx.lineTo(-12, -26);
+      ctx.lineTo(4, -28);
+      ctx.lineTo(16, -18);
+      ctx.lineTo(20, 0);
+      ctx.closePath();
+      ctx.fill();
+      // Highlight facet
+      ctx.fillStyle = biomeId === 'moon' ? '#94A3B8' : (biomeId === 'desert' ? '#D97706' : (biomeId === 'cyberpunk' ? '#00F0FF' : '#78716C'));
+      ctx.beginPath();
+      ctx.moveTo(-12, -26);
+      ctx.lineTo(4, -28);
+      ctx.lineTo(0, -12);
+      ctx.lineTo(-14, -10);
+      ctx.closePath();
+      ctx.fill();
+    } else if (obs.type === 'barrier') {
+      // Hazard barricade with striped yellow/black warning pattern & beacon
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(-15, -30, 4, 30);
+      ctx.fillRect(11, -30, 4, 30);
+      // Crossbars with diagonal stripes
+      ctx.fillStyle = '#F59E0B';
+      ctx.fillRect(-18, -26, 36, 10);
+      ctx.fillStyle = '#0F172A';
+      for (let bx = -16; bx < 18; bx += 8) {
+        ctx.beginPath();
+        ctx.moveTo(bx, -26);
+        ctx.lineTo(bx + 4, -26);
+        ctx.lineTo(bx, -16);
+        ctx.lineTo(bx - 4, -16);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Top blinking warning light
+      const blink = Math.sin(performance.now() * 0.008) > 0;
+      ctx.shadowColor = '#EF4444';
+      ctx.shadowBlur = blink ? 10 : 2;
+      ctx.fillStyle = blink ? '#EF4444' : '#7F1D1D';
+      ctx.beginPath();
+      ctx.arc(0, -32, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (obs.type === 'spike') {
+      // Sharp triangular hazard spikes / laser crystals
+      ctx.shadowColor = biomeId === 'cyberpunk' ? '#FF007F' : '#DC2626';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = biomeId === 'cyberpunk' ? '#FF007F' : (biomeId === 'moon' ? '#38BDF8' : '#DC2626');
+      [-14, -2, 10].forEach((ox, i) => {
+        const sh = 18 + (i % 2) * 8;
+        ctx.beginPath();
+        ctx.moveTo(ox - 5, 0);
+        ctx.lineTo(ox, -sh);
+        ctx.lineTo(ox + 5, 0);
+        ctx.closePath();
+        ctx.fill();
+      });
+    } else if (obs.type === 'ramp') {
+      // Inclined launch springboard ramp with chevrons
+      ctx.shadowColor = '#FACC15';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#EAB308';
+      ctx.beginPath();
+      ctx.moveTo(-24, 0);
+      ctx.lineTo(24, -24);
+      ctx.lineTo(24, 0);
+      ctx.closePath();
+      ctx.fill();
+      // Ramp chevrons
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2.5;
+      [-10, 2, 14].forEach(rx => {
+        const ry = -((rx + 24) / 48) * 24;
+        ctx.beginPath();
+        ctx.moveTo(rx - 3, ry + 6);
+        ctx.lineTo(rx + 2, ry);
+        ctx.lineTo(rx - 3, ry - 6);
+        ctx.stroke();
+      });
+      // Launch lip
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(21, -26, 3, 26);
+    }
+
+    ctx.restore();
   }
 
   /* ── High-Fidelity Realistic Wheel System ───────────────────────
@@ -1355,70 +1822,90 @@ class GameSandbox {
     // Must be checked before the generic "any inserted sprite = vehicle" path below.
     if (this.characterMode && this.customVehicleSprite && this.customVehicleSprite.img && this.customVehicleSprite.img.complete) {
       const s = this.customVehicleSprite;
+      const totalFrames = s.metadata?.frame_count || (s.metadata?.rows * s.metadata?.columns) || 1;
+      const isStatic = Boolean(s.isStatic || s.metadata?.is_static || (s.metadata?.rows === 1 && s.metadata?.columns === 1) || totalFrames <= 1);
+
+      const fw = isStatic ? (s.img.naturalWidth || s.fw || 128) : (s.fw || s.img.naturalWidth || 128);
+      const fh = isStatic ? (s.img.naturalHeight || s.fh || 128) : (s.fh || s.img.naturalHeight || 128);
       const targetH = 150;
-      const aspect = s.fw / Math.max(1, s.fh);
+      const aspect = fw / Math.max(1, fh);
       const targetW = targetH * aspect;
 
       const speed = Math.abs(this.car?.vx || 0);
       const moving = speed > 5;
       const running = speed > 220;
 
-      // Multi-frame animation: cycle faster while running, hold frame 0 when idle
-      const totalFrames = s.metadata?.frame_count || (s.metadata?.rows * s.metadata?.columns) || 1;
-      const cols = s.metadata?.columns || totalFrames || 1;
-      const fps = moving ? (running ? 12 : 7) : 2;
-      const currentFrame = moving
-        ? Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames)
-        : 0;
-      const fx = (currentFrame % cols) * s.fw;
-      const fy = Math.floor(currentFrame / cols) * s.fh;
+      let fx = 0;
+      let fy = 0;
+      if (!isStatic && totalFrames > 1) {
+        const cols = s.metadata?.columns || totalFrames || 1;
+        const fps = moving ? (running ? 12 : 7) : 2;
+        const currentFrame = moving
+          ? Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames)
+          : 0;
+        fx = (currentFrame % cols) * fw;
+        fy = Math.floor(currentFrame / cols) * fh;
+      }
 
       ctx.imageSmoothingEnabled = false;
       if ((this.car?.vx || 0) < 0) {
         ctx.save();
         ctx.scale(-1, 1);
-        ctx.drawImage(s.img, fx, fy, s.fw, s.fh, -targetW / 2, -targetH / 2, targetW, targetH);
+        ctx.drawImage(s.img, fx, fy, fw, fh, -targetW / 2, -targetH / 2, targetW, targetH);
         ctx.restore();
       } else {
-        ctx.drawImage(s.img, fx, fy, s.fw, s.fh, -targetW / 2, -targetH / 2, targetW, targetH);
+        ctx.drawImage(s.img, fx, fy, fw, fh, -targetW / 2, -targetH / 2, targetW, targetH);
       }
       return;
     }
 
     const customAsset = this.customVehicleSprite || (this.customSprite ? {
       img: this.customSprite,
-      fw: (this.customSprite.naturalWidth && this.customSprite.naturalWidth >= 128) ? 128 : (this.customSprite.naturalWidth || 64),
-      fh: (this.customSprite.naturalHeight && this.customSprite.naturalHeight >= 128) ? 128 : (this.customSprite.naturalHeight || 64),
-      metadata: {},
+      fw: this.customSprite.naturalWidth || 128,
+      fh: this.customSprite.naturalHeight || 128,
+      metadata: { is_static: true, rows: 1, columns: 1, frame_count: 1 },
+      isStatic: true,
     } : null);
 
     // ── 1. CUSTOM INSERTED SPRITE VEHICLE ─────────────────────────
     if (customAsset && customAsset.img && customAsset.img.complete) {
-      const targetW = 100;
-      const fw = customAsset.fw || customAsset.img.naturalWidth || 100;
-      const fh = customAsset.fh || customAsset.img.naturalHeight || 100;
-      const aspect = fw / Math.max(1, fh);
-      const targetH = Math.max(38, Math.min(80, targetW / aspect));
-
-      // Multi-frame animation playback: render ONLY one frame, never the entire sheet
       const totalFrames = customAsset.metadata?.frame_count || (customAsset.metadata?.rows * customAsset.metadata?.columns) || 1;
-      const fps = customAsset.metadata?.fps || 8;
-      const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
-      const cols = customAsset.metadata?.columns || totalFrames || 1;
-      const fx = (currentFrame % cols) * fw;
-      const fy = Math.floor(currentFrame / cols) * fh;
+      const isStatic = Boolean(customAsset.isStatic || customAsset.metadata?.is_static || (customAsset.metadata?.rows === 1 && customAsset.metadata?.columns === 1) || totalFrames <= 1);
+
+      const fw = isStatic ? (customAsset.img.naturalWidth || customAsset.fw || 120) : (customAsset.fw || customAsset.img.naturalWidth || 120);
+      const fh = isStatic ? (customAsset.img.naturalHeight || customAsset.fh || 80) : (customAsset.fh || customAsset.img.naturalHeight || 80);
+      const targetW = 120;
+      const aspect = fw / Math.max(1, fh);
+      const targetH = Math.max(38, Math.min(85, targetW / aspect));
+
+      let fx = 0;
+      let fy = 0;
+      if (!isStatic && totalFrames > 1) {
+        const fps = customAsset.metadata?.fps || 8;
+        const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
+        const cols = customAsset.metadata?.columns || totalFrames || 1;
+        fx = (currentFrame % cols) * fw;
+        fy = Math.floor(currentFrame / cols) * fh;
+      }
+
+      ctx.imageSmoothingEnabled = false;
+      const isFacingLeft = (this.car?.vx || 0) < 0;
+
+      ctx.save();
+      if (isFacingLeft) {
+        ctx.scale(-1, 1);
+      }
 
       // Draw custom sprite body slightly elevated above wheel axles
-      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(
         customAsset.img,
         fx, fy, fw, fh,
-        -targetW / 2, -targetH / 2 - 2,
+        -targetW / 2, -targetH / 2 - 4,
         targetW, targetH
       );
 
       // Render realistic rotating alloy wheels underneath the custom sprite!
-      const wheelR = Math.max(13, Math.min(16, targetH * 0.28));
+      const wheelR = Math.max(12, Math.min(16, targetH * 0.28));
       const rearWX = -targetW * 0.28;
       const frontWX = targetW * 0.28;
       const wheelWY = 16;
@@ -1432,6 +1919,7 @@ class GameSandbox {
       ctx.ellipse(0, wheelWY + wheelR, targetW * 0.44, 3, 0, 0, Math.PI * 2);
       ctx.fill();
 
+      ctx.restore();
       return;
     }
 
@@ -1665,14 +2153,16 @@ class GameSandbox {
     });
   }
 
-  /* ── HUD Update (Issue #33: Distance, Speed, RPM, Fuel, Coins) ─ */
+  /* ── HUD Update (Distance, Speed, RPM, Fuel, Coins, Level, Hiscore) ─ */
   _updateHUD() {
     if (!this.hasVehicle) {
-      if (this.hudDist)   this.hudDist.textContent   = '--- m';
-      if (this.hudSpeed)  this.hudSpeed.textContent  = '--- km/h';
-      if (this.hudCoins)  this.hudCoins.textContent  = '---';
-      if (this.hudRpmBar) this.hudRpmBar.style.width = '0%';
-      if (this.hudFuel)   this.hudFuel.textContent   = '---';
+      if (this.hudDist)    this.hudDist.textContent    = '--- m';
+      if (this.hudSpeed)   this.hudSpeed.textContent   = '--- km/h';
+      if (this.hudCoins)   this.hudCoins.textContent   = '---';
+      if (this.hudRpmBar)  this.hudRpmBar.style.width  = '0%';
+      if (this.hudFuel)    this.hudFuel.textContent    = '---';
+      if (this.hudLevel)   this.hudLevel.textContent   = 'Level 1 (0-100m)';
+      if (this.hudHiscore) this.hudHiscore.textContent = `Best: ${this.highScore}`;
       if (this.hudFuelBar) {
         this.hudFuelBar.style.width = '0%';
         this.hudFuelBar.style.backgroundColor = '#64748b';
@@ -1684,12 +2174,14 @@ class GameSandbox {
     const speed = Math.abs(Math.round(car.speed * 10));
     const rpm   = Math.min(1, Math.abs(car.vx) / (12 * 60));
 
-    if (this.hudDist)   this.hudDist.textContent   = `${Math.round(this.distanceMeters)} m`;
-    if (this.hudSpeed)  this.hudSpeed.textContent  = `${speed} km/h`;
-    if (this.hudCoins)  this.hudCoins.textContent  = car.coins;
-    if (this.hudRpmBar) this.hudRpmBar.style.width = `${Math.round(rpm * 100)}%`;
+    if (this.hudDist)    this.hudDist.textContent    = `${Math.round(this.distanceMeters)} m`;
+    if (this.hudSpeed)   this.hudSpeed.textContent   = `${speed} km/h`;
+    if (this.hudCoins)   this.hudCoins.textContent   = car.coins;
+    if (this.hudRpmBar)  this.hudRpmBar.style.width  = `${Math.round(rpm * 100)}%`;
+    if (this.hudLevel)   this.hudLevel.textContent   = this._getLevelName(this.currentLevel);
+    if (this.hudHiscore) this.hudHiscore.textContent = `Best: ${this.highScore}`;
 
-    // Fuel bar with Green→Orange→Red gradient (Issue #33)
+    // Fuel bar with Green→Orange→Red gradient
     if (this.hudFuel)    this.hudFuel.textContent    = `${Math.round(car.fuel)}%`;
     if (this.hudFuelBar) {
       this.hudFuelBar.style.width = `${car.fuel}%`;
@@ -1898,7 +2390,7 @@ class GameSandbox {
           <div class="shelf-card-top">
             <div class="shelf-card-thumb-wrap">
               <div class="shelf-card-thumb" role="img" aria-label="${a.name}"
-                   style="background-image:url('${a.imageUrl}');background-size:${cols * 100}% ${rows * 100}%;background-position:0 0;"></div>
+                   style="background-image:url('${a.imageUrl}');background-size:${(meta.is_static || (cols === 1 && rows === 1) || (meta.frame_count <= 1)) ? 'contain' : (cols * 100 + '% ' + rows * 100 + '%')};background-position:center;background-repeat:no-repeat;"></div>
             </div>
             <div class="shelf-card-info">
               <span class="shelf-card-name">${a.name}</span>
@@ -1909,14 +2401,32 @@ class GameSandbox {
               </div>
             </div>
           </div>
-          <div class="shelf-card-actions">
-            <button type="button" class="btn-quick-ingest" data-idx="${idx}" title="Quick Ingest: control this sprite as your big walking/running character">
-              ⚡ Quick Ingest
+          <div class="shelf-card-actions" style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button type="button" class="btn-ingest-vehicle" data-idx="${idx}" title="Drive as Vehicle (Single image, no blinking or slicing)">
+              🚗 Drive (No Blink)
+            </button>
+            <button type="button" class="btn-quick-ingest" data-idx="${idx}" title="Walk on foot as character">
+              🚶 Walk Character
             </button>
           </div>
         </div>
       `;
     }).join('');
+
+    this.shelfList.querySelectorAll('.btn-ingest-vehicle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const item = this.incomingAssets[idx];
+        if (!item) return;
+        this.ingestSpriteAsVehicle(item.asset, true);
+        if (this.assetShelf?.classList.contains('open')) {
+          this.assetShelf.classList.remove('open');
+          if (this.shelfBackdrop) this.shelfBackdrop.hidden = true;
+          setTimeout(() => { this.assetShelf.hidden = true; }, 350);
+        }
+      });
+    });
 
     this.shelfList.querySelectorAll('.btn-quick-ingest').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -1933,6 +2443,66 @@ class GameSandbox {
       });
     });
 
+  }
+
+  /**
+   * Smart dispatcher for incoming or URL sprites: detects vehicles or static 1x1 assets
+   * and mounts them stably as drivable vehicles (no blinking) or characters.
+   */
+  ingestSprite(asset) {
+    if (!asset) return;
+    const meta = asset.metadata || {};
+    const nameLower = (asset.name || '').toLowerCase();
+    const isVehicle = nameLower.includes('car') || nameLower.includes('auto') ||
+                      nameLower.includes('truck') || nameLower.includes('vehic') ||
+                      nameLower.includes('sedan') || nameLower.includes('racer') ||
+                      nameLower.includes('coupe') || nameLower.includes('kart');
+    const isSingle = Boolean(meta.is_static || (meta.rows === 1 && meta.columns === 1) || (meta.frame_count <= 1));
+
+    if (isVehicle || isSingle) {
+      this.ingestSpriteAsVehicle(asset, true);
+    } else {
+      this.ingestSpriteAsCharacter(asset);
+    }
+  }
+
+  /**
+   * Drive the ingested sprite as a vehicle:
+   * Sets up chassis with wheels, engine audio, and prevents frame-slicing / blinking.
+   */
+  ingestSpriteAsVehicle(asset, isStatic = true) {
+    loadSafeImage(asset.imageUrl).then(img => {
+      const meta = asset.metadata || {};
+      const forceStatic = Boolean(isStatic || meta.is_static || (meta.rows === 1 && meta.columns === 1) || (meta.frame_count <= 1));
+      const fw = forceStatic ? (img.naturalWidth || 128) : (meta.frame_width || img.naturalWidth || 128);
+      const fh = forceStatic ? (img.naturalHeight || 128) : (meta.frame_height || img.naturalHeight || 128);
+
+      this.worldSprites = [];
+      this.hasVehicle = true;
+      this.characterMode = false;
+      this.customSprite = img;
+      this.customVehicleSprite = {
+        img,
+        name: asset.name,
+        metadata: meta,
+        fw,
+        fh,
+        isStatic: forceStatic,
+      };
+
+      this.spawnCar();
+      this.audio?.stopEngine?.();
+      if (!this._gameOver && !this.car?.crashed) {
+        this.audio?.startEngine?.();
+      }
+      this.audio?.playCoinPickup?.();
+      this.floatingPopups?.push({
+        x: this.W * 0.35,
+        y: 190,
+        text: `🚗 Driving: ${asset.name}! (No Blink)`,
+        alpha: 1.4
+      });
+    }).catch(err => console.error('Failed to ingest vehicle sprite:', err));
   }
 
   /**
@@ -1994,8 +2564,9 @@ class GameSandbox {
   ingestSpriteAsCharacter(asset) {
     loadSafeImage(asset.imageUrl).then(img => {
       const meta = asset.metadata || {};
-      const fw = meta.frame_width || img.naturalWidth || 128;
-      const fh = meta.frame_height || img.naturalHeight || 128;
+      const isStatic = Boolean(meta.is_static || (meta.rows === 1 && meta.columns === 1) || (meta.frame_count <= 1));
+      const fw = isStatic ? (img.naturalWidth || 128) : (meta.frame_width || img.naturalWidth || 128);
+      const fh = isStatic ? (img.naturalHeight || 128) : (meta.frame_height || img.naturalHeight || 128);
 
       // Ensure existing world sprites are cleared to avoid duplicates when driving vehicle
       this.worldSprites = [];
@@ -2009,6 +2580,7 @@ class GameSandbox {
         metadata: meta,
         fw,
         fh,
+        isStatic,
       };
 
       // Stop any car engine sound still running from a previous vehicle sprite.
@@ -2078,16 +2650,25 @@ class GameSandbox {
 
       // Multi-frame animation playback
       const totalFrames = ws.metadata?.frame_count || (ws.metadata?.rows * ws.metadata?.columns) || 1;
-      const fps = ws.metadata?.fps || 8;
-      const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
-      const cols = ws.metadata?.columns || totalFrames || 1;
-      const fx = (currentFrame % cols) * ws.fw;
-      const fy = Math.floor(currentFrame / cols) * ws.fh;
+      const isStatic = Boolean(ws.isStatic || ws.metadata?.is_static || (ws.metadata?.rows === 1 && ws.metadata?.columns === 1) || totalFrames <= 1);
+
+      let fx = 0;
+      let fy = 0;
+      const fw = isStatic ? (ws.img.naturalWidth || ws.fw) : (ws.fw || ws.img.naturalWidth);
+      const fh = isStatic ? (ws.img.naturalHeight || ws.fh) : (ws.fh || ws.img.naturalHeight);
+
+      if (!isStatic && totalFrames > 1) {
+        const fps = ws.metadata?.fps || 8;
+        const currentFrame = Math.floor((Date.now() / 1000) * fps) % Math.max(1, totalFrames);
+        const cols = ws.metadata?.columns || totalFrames || 1;
+        fx = (currentFrame % cols) * fw;
+        fy = Math.floor(currentFrame / cols) * fh;
+      }
 
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(
         ws.img,
-        fx, fy, ws.fw, ws.fh,
+        fx, fy, fw, fh,
         sx - drawW / 2,
         sy - drawH,
         drawW, drawH

@@ -50,6 +50,12 @@ def build_prompt(
         multi_neg = multi_cfg.get("negative", "")
         if multi_neg:
             negative = f"{negative}, {multi_neg}" if negative else multi_neg
+    elif rows == 1 and columns == 1:
+        grid_note = presets.get("grid_notes", {}).get("1x1", "single complete standalone game asset, full view centered, one single subject only, no multiple frames, not a sprite sheet")
+        # Tailor style prefix away from "sprite sheet"
+        style_prefix = style_prefix.replace("sprite sheet,", "single sprite,").replace("sprite sheet", "single sprite")
+        single_neg = "sprite sheet, multiple views, collage, grid, split, tiled, collection, duplicates, frame sequence, montage"
+        negative = f"{negative}, {single_neg}" if negative else single_neg
     else:
         grid_note = presets.get("grid_notes", {}).get(f"{rows}x{columns}", "")
 

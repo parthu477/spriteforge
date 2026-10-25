@@ -8,7 +8,9 @@ and guaranteed token redaction in logs.
 """
 from __future__ import annotations
 
+import base64
 import io
+import json
 import logging
 import time
 
@@ -63,7 +65,9 @@ class CloudflareProvider:
             "Authorization": f"Bearer {cfg.CF_API_TOKEN}",
             "Content-Type": "application/json",
         }
-        payload = {"prompt": prompt, "steps": cfg.CF_STEPS, "seed": seed}
+        payload: dict[str, object] = {"prompt": prompt, "steps": cfg.CF_STEPS}
+        if seed is not None and "flux" not in self.model.lower():
+            payload["seed"] = seed
 
         last_exc: Exception = RuntimeError("Unknown error")
         for attempt in range(self._max_retries + 1):
@@ -104,6 +108,16 @@ class CloudflareProvider:
                 raise ProviderAuthError(
                     f"Cloudflare returned HTTP {resp.status_code}. "
                     "Verify CF_ACCOUNT_ID and CF_API_TOKEN."
+                )
+
+            # ── Account ID / Routing error 404 — don't retry ────────
+            if resp.status_code == 404:
+                log.error(
+                    "Cloudflare returned HTTP 404. Verify CF_ACCOUNT_ID in .env (account ID must be copied from dash.cloudflare.com).",
+                )
+                raise ProviderAuthError(
+                    "Cloudflare returned HTTP 404: Invalid Account ID or endpoint. "
+                    "Verify your CF_ACCOUNT_ID in .env (copy your 32-character Account ID from dash.cloudflare.com)."
                 )
 
             # ── Quota exceeded ────────────────────────────────
@@ -147,15 +161,35 @@ class CloudflareProvider:
                         f"Response exceeded {self._max_bytes} bytes limit."
                     )
 
-            # ── Content-type check (AC 8.5) ───────────────────
+            # ── Content-type check & decoding (AC 8.5) ────────
             ct = resp.headers.get("Content-Type", "")
-            if "image" not in ct and len(raw) < 8:
+            img_bytes = raw
+            if "json" in ct.lower():
+                try:
+                    data = json.loads(raw.decode("utf-8", errors="replace"))
+                    img_b64 = None
+                    if isinstance(data, dict):
+                        res = data.get("result")
+                        if isinstance(res, dict):
+                            img_b64 = res.get("image")
+                        elif isinstance(res, str):
+                            img_b64 = res
+                        if not img_b64:
+                            img_b64 = data.get("image")
+                    if not img_b64:
+                        raise ProviderBadResponse(
+                            f"Cloudflare JSON missing 'image' field: {list(data.keys()) if isinstance(data, dict) else data}"
+                        )
+                    img_bytes = base64.b64decode(img_b64)
+                except Exception as exc:
+                    raise ProviderBadResponse(f"Could not parse Cloudflare image JSON: {exc}") from exc
+            elif "image" not in ct and len(raw) < 8:
                 raise ProviderBadResponse(
                     f"Unexpected content-type '{ct}'; expected an image."
                 )
 
             try:
-                img = Image.open(io.BytesIO(raw)).convert("RGB")
+                img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
                 return img
             except Exception as exc:
                 raise ProviderBadResponse(f"Could not decode image: {exc}") from exc
