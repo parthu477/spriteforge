@@ -282,14 +282,16 @@ def apply_retro_postprocessing(
 
 # Module-level rembg session singleton (loaded once)
 _rembg_session: Any = None
+_rembg_model_name: str | None = None
 
 
-def _get_rembg_session(model: str = "u2net") -> Any:
-    global _rembg_session
-    if _rembg_session is None:
+def _get_rembg_session(model: str = "u2netp") -> Any:
+    global _rembg_session, _rembg_model_name
+    if _rembg_session is None or _rembg_model_name != model:
         import rembg  # type: ignore
         log.info("Initialising rembg session with model '%s'…", model)
         _rembg_session = rembg.new_session(model)
+        _rembg_model_name = model
     return _rembg_session
 
 
@@ -297,7 +299,7 @@ def _get_rembg_session(model: str = "u2net") -> Any:
 
 def remove_background(
     img: Image.Image,
-    rembg_model: str = "u2net",
+    rembg_model: str = "u2netp",
     alpha_threshold: int = 16,
 ) -> Image.Image:
     """Strip solid background with rembg, clean near-transparent edges.
@@ -319,11 +321,8 @@ def remove_background(
         import rembg  # type: ignore
 
         session = _get_rembg_session(rembg_model)
-        buf = BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        raw_out = rembg.remove(buf.read(), session=session)
-        result = Image.open(BytesIO(raw_out)).convert("RGBA")
+        # Pass PIL image directly to eliminate costly PNG compression/decompression overhead
+        result = rembg.remove(img, session=session).convert("RGBA")
     except Exception as exc:
         log.warning("rembg unavailable (%s); using background keying fallback.", exc)
         rgb = img.convert("RGB")

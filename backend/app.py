@@ -93,6 +93,18 @@ def create_app() -> Flask:
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+    # Warm up background removal model in background thread to eliminate first-request lag
+    def _warmup_rembg():
+        try:
+            from backend.services.processing import _get_rembg_session
+            _get_rembg_session(cfg.REMBG_MODEL)
+            log.info("rembg model '%s' pre-warmed.", cfg.REMBG_MODEL)
+        except Exception as exc:
+            log.warning("rembg pre-warm skipped: %s", exc)
+
+    import threading
+    threading.Thread(target=_warmup_rembg, daemon=True).start()
+
     return app
 
 

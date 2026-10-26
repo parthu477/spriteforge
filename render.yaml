@@ -4,7 +4,7 @@ services:
     runtime: python
     region: oregon
     plan: free
-    buildCommand: pip install -r backend/requirements.txt
+    buildCommand: pip install -r backend/requirements.txt && python -c "import os; os.environ['U2NET_HOME']='backend/data/models'; import rembg; rembg.new_session('u2netp')"
     startCommand: gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
     healthCheckPath: /api/health
     # Note: On the free plan, Render uses ephemeral local storage.
@@ -38,5 +38,9 @@ services:
         value: 0.0.0.0
       - key: FLASK_DEBUG
         value: "false"
+      - key: REMBG_MODEL
+        value: u2netp
+      - key: U2NET_HOME
+        value: backend/data/models
       - key: LOG_LEVEL
         value: INFO

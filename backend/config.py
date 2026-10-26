@@ -18,6 +18,11 @@ from dotenv import load_dotenv
 # Load .env from the backend directory (or wherever the process is started from)
 load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
+# Configure U2NET_HOME so rembg models are stored in project data/models directory
+# and can be pre-cached during build time on cloud hosts like Render.
+if "U2NET_HOME" not in os.environ:
+    os.environ["U2NET_HOME"] = str((Path(__file__).parent / "data" / "models").resolve())
+
 
 def _require(key: str) -> str:
     v = os.environ.get(key, "").strip()
@@ -80,7 +85,7 @@ class Config:
 
     # ── asset / image processing ──────────────────────────────
     ASSET_DIR: Path = _resolve_asset_dir()
-    REMBG_MODEL: str = os.environ.get("REMBG_MODEL", "u2net")
+    REMBG_MODEL: str = os.environ.get("REMBG_MODEL", "u2netp")
     ALPHA_THRESHOLD: int = int(os.environ.get("ALPHA_THRESHOLD", "16"))
     CELL_SIZE: int = int(os.environ.get("CELL_SIZE", "0"))
     MAX_IMAGE_BYTES: int = int(os.environ.get("MAX_IMAGE_BYTES", str(10 * 1024 * 1024)))
