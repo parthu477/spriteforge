@@ -97,13 +97,17 @@ def _is_allowed_origin(origin: str) -> bool:
 
 
 def _check_csrf() -> bool:
+    sec_fetch = request.headers.get("Sec-Fetch-Site", "").lower()
     origin = request.headers.get("Origin", "").strip()
     if not origin and request.referrer:
         parsed_ref = urllib.parse.urlparse(request.referrer)
         if parsed_ref.scheme and parsed_ref.netloc:
             origin = f"{parsed_ref.scheme}://{parsed_ref.netloc}"
 
-    if not _is_allowed_origin(origin):
+    if origin:
+        if not _is_allowed_origin(origin):
+            return False
+    elif sec_fetch not in ("same-origin", "same-site"):
         return False
 
     token = request.headers.get("X-CSRF-Token", "").strip()

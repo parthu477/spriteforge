@@ -221,6 +221,31 @@ async function submitJob(body) {
     const data = await resp.json();
 
     if (!resp.ok) {
+      if (resp.status === 403 && data.message && data.message.includes('CSRF')) {
+        try {
+          const meResp = await fetch('/api/auth/me');
+          const meData = await meResp.json();
+          if (meData.csrf_token) {
+            const tokenEl = document.getElementById('csrf-token');
+            if (tokenEl) tokenEl.value = meData.csrf_token;
+            const retryResp = await fetch('/api/generate', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': meData.csrf_token,
+                'Origin': location.origin,
+              },
+              body: JSON.stringify(body),
+            });
+            const retryData = await retryResp.json();
+            if (retryResp.ok) {
+              currentJobId = retryData.job_id;
+              trackJob(currentJobId);
+              return;
+            }
+          }
+        } catch (_) {}
+      }
       const msg = data.fields ? Object.values(data.fields).join(' ') : (data.message || 'Request failed.');
       setGenerating(false);
       showError(msg);
