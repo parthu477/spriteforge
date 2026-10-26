@@ -42,5 +42,7 @@ services:
         value: u2netp
       - key: U2NET_HOME
         value: backend/data/models
+      - key: OMP_NUM_THREADS
+        value: "1"
       - key: LOG_LEVEL
         value: INFO

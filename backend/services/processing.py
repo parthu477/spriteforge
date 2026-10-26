@@ -289,8 +289,15 @@ def _get_rembg_session(model: str = "u2netp") -> Any:
     global _rembg_session, _rembg_model_name
     if _rembg_session is None or _rembg_model_name != model:
         import rembg  # type: ignore
-        log.info("Initialising rembg session with model '%s'…", model)
-        _rembg_session = rembg.new_session(model)
+        import onnxruntime as ort
+
+        sess_opts = ort.SessionOptions()
+        sess_opts.intra_op_num_threads = 1
+        sess_opts.inter_op_num_threads = 1
+        sess_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+        log.info("Initialising rembg session with model '%s' (single-threaded for cloud)…", model)
+        _rembg_session = rembg.new_session(model, sess_opts=sess_opts)
         _rembg_model_name = model
     return _rembg_session
 
@@ -307,10 +314,9 @@ def remove_background(
     Raises ValueError if alpha coverage is outside [0.01, 0.95].
     """
     if img.mode == "RGBA":
-        a = img.getchannel("A")
-        raw = a.tobytes()
-        total = len(raw)
-        foreground = sum(1 for px in raw if px > 0)
+        a = np.array(img.getchannel("A"))
+        total = a.size
+        foreground = int(np.count_nonzero(a))
         coverage = foreground / total
         if 0.01 <= coverage <= 0.95:
             _check_alpha(img)
@@ -324,19 +330,20 @@ def remove_background(
         # Pass PIL image directly to eliminate costly PNG compression/decompression overhead
         result = rembg.remove(img, session=session).convert("RGBA")
     except Exception as exc:
-        log.warning("rembg unavailable (%s); using background keying fallback.", exc)
-        rgb = img.convert("RGB")
-        result = Image.new("RGBA", rgb.size, (0, 0, 0, 0))
-        for x in range(rgb.width):
-            for y in range(rgb.height):
-                r, g, b = rgb.getpixel((x, y))
-                if not (r > 245 and g > 245 and b > 245):
-                    result.putpixel((x, y), (r, g, b, 255))
+        log.warning("rembg unavailable (%s); using fast vectorized keying fallback.", exc)
+        arr = np.array(img.convert("RGBA"))
+        # Fast vectorized corner-based chroma keying fallback
+        corners = np.array([arr[0, 0, :3], arr[0, -1, :3], arr[-1, 0, :3], arr[-1, -1, :3]], dtype=np.float32)
+        avg_corner = np.mean(corners, axis=0)
+        dist = np.sqrt(np.sum((arr[..., :3].astype(np.float32) - avg_corner) ** 2, axis=-1))
+        arr[dist < 32.0, 3] = 0
+        result = Image.fromarray(arr)
 
-    # Alpha threshold clean-up: clamp near-transparent pixels to 0
+    # Alpha threshold clean-up: clamp near-transparent pixels to 0 using fast LUT
     if alpha_threshold > 0:
+        lut = [0 if px < alpha_threshold else px for px in range(256)]
         r, g, b, a = result.split()
-        mask = a.point(lambda px: 0 if px < alpha_threshold else px)
+        mask = a.point(lut)
         result.putalpha(mask)
 
     _check_alpha(result)
@@ -345,10 +352,9 @@ def remove_background(
 
 def _check_alpha(img: Image.Image) -> None:
     """Raise ValueError if alpha coverage is extreme (AC 10.2)."""
-    a = img.getchannel("A")
-    raw = a.tobytes()
-    total = len(raw)
-    foreground = sum(1 for px in raw if px > 0)
+    a = np.array(img.getchannel("A"))
+    total = a.size
+    foreground = int(np.count_nonzero(a))
     coverage = foreground / total
     if coverage < 0.01 or coverage > 0.95:
         raise ValueError(

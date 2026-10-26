@@ -24,6 +24,8 @@ coverage.xml
 
 # Models (large binary files)
 models/
+!backend/data/models/
+!backend/data/models/**
 
 # Assets (generated, not source)
 assets/sprites/*

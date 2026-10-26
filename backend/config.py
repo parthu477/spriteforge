@@ -18,6 +18,9 @@ from dotenv import load_dotenv
 # Load .env from the backend directory (or wherever the process is started from)
 load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
+# Force single-threaded execution for OpenMP and ONNX on cloud container environments
+os.environ["OMP_NUM_THREADS"] = "1"
+
 # Configure U2NET_HOME so rembg models are stored in project data/models directory
 # and can be pre-cached during build time on cloud hosts like Render.
 if "U2NET_HOME" not in os.environ:
