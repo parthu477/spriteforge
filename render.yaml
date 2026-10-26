@@ -3,22 +3,25 @@ services:
     name: spriteforge
     runtime: python
     region: oregon
-    plan: starter
+    plan: free
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: gunicorn backend.app:create_app() --bind 0.0.0.0:$PORT
-    disk:
-      name: spriteforge-data
-      mountPath: /var/data
-      sizeGB: 1
+    startCommand: gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /api/health
+    # Note: On the free plan, Render uses ephemeral local storage.
+    # To attach a persistent disk ($0.25/GB/mo), upgrade to "plan: starter" and uncomment the disk section:
+    # disk:
+    #   name: spriteforge-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3
       - key: SECRET_KEY
         generateValue: true
       - key: ASSET_DIR
-        value: /var/data/sprites
+        value: assets/sprites
       - key: USERS_DB_PATH
-        value: /var/data/users.db
+        value: backend/data/users.db
       - key: PROVIDER
         value: cloudflare
       - key: FALLBACK_PROVIDER
