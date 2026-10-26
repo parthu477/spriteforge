@@ -97,7 +97,7 @@ class Config:
     FLASK_PORT: int = int(os.environ.get("FLASK_PORT", "5000"))
     FLASK_DEBUG: bool = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     SECRET_KEY: str = os.environ.get(
-        "SECRET_KEY", os.urandom(32).hex()
+        "SECRET_KEY", "spriteforge_session_secret_key_default_2026_fallback"
     )
 
     # ── logging ───────────────────────────────────────────────

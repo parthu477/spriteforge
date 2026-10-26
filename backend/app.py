@@ -89,12 +89,10 @@ def create_app() -> Flask:
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
 
-    log.info(
-        "SpriteForge started — provider=%s fallback=%s asset_dir=%s",
-        cfg.PROVIDER,
-        cfg.FALLBACK_PROVIDER,
-        cfg.ASSET_DIR,
-    )
+    # Support reverse proxies (Render, Cloudflare, load balancers)
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
     return app
 
 

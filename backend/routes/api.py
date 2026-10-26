@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, send_from_directory, send_file, Response, current_app, make_response
 import datetime
+import hmac
 import io
 import json
 import logging
@@ -7,6 +8,7 @@ import os
 import queue
 import random
 import re
+import urllib.parse
 
 from backend.config import cfg
 from backend.jobs import JobStore
@@ -51,15 +53,66 @@ def init_api(job_store: JobStore) -> None:
     _job_store = job_store
 
 
-# ── CSRF helper ───────────────────────────────────────────────
+def _is_allowed_origin(origin: str) -> bool:
+    if not origin:
+        return False
+    clean_origin = origin.rstrip("/").lower()
+    # Local development and unit test origins
+    if clean_origin in (
+        "http://127.0.0.1:5000",
+        "http://localhost:5000",
+        "http://127.0.0.1",
+        "http://localhost",
+        "https://127.0.0.1:5000",
+        "https://localhost:5000",
+    ):
+        return True
+
+    try:
+        parsed = urllib.parse.urlparse(clean_origin)
+        origin_host = (parsed.netloc or "").lower()
+        origin_name = origin_host.split(":")[0]
+    except Exception:
+        return False
+
+    if not origin_host or not origin_name:
+        return False
+
+    # Check incoming request host representations
+    req_hosts = {
+        (request.host or "").lower(),
+        (request.headers.get("Host") or "").lower(),
+        (request.headers.get("X-Forwarded-Host") or "").lower(),
+    } - {""}
+    req_names = {h.split(":")[0] for h in req_hosts}
+
+    if origin_host in req_hosts or origin_name in req_names:
+        return True
+    if origin_name.endswith(".onrender.com"):
+        return True
+    if request.host_url.rstrip("/").lower() == clean_origin:
+        return True
+
+    return False
+
 
 def _check_csrf() -> bool:
-    origin = request.headers.get("Origin", "")
-    if origin not in ("http://127.0.0.1:5000", "http://localhost:5000"):
+    origin = request.headers.get("Origin", "").strip()
+    if not origin and request.referrer:
+        parsed_ref = urllib.parse.urlparse(request.referrer)
+        if parsed_ref.scheme and parsed_ref.netloc:
+            origin = f"{parsed_ref.scheme}://{parsed_ref.netloc}"
+
+    if not _is_allowed_origin(origin):
         return False
-    token = request.headers.get("X-CSRF-Token", "")
+
+    token = request.headers.get("X-CSRF-Token", "").strip()
     from flask import session
-    return token == session.get("csrf_token", "")
+    session_token = session.get("csrf_token", "")
+    if not token or not session_token:
+        return False
+
+    return hmac.compare_digest(token, session_token)
 
 
 # ── POST /api/generate ────────────────────────────────────────

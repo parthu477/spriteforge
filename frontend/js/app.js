@@ -55,7 +55,7 @@ const STAGE_LABELS = {
   done: 'Done',
 };
 
-const csrfToken = () => document.getElementById('csrf-token').value;
+const csrfToken = () => document.getElementById('csrf-token')?.value || '';
 
 // ── DOM refs ──────────────────────────────────────────────────
 const form = document.getElementById('generate-form');

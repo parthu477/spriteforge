@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import secrets
 from functools import wraps
 from flask import Blueprint, jsonify, request, session, current_app, g
 
@@ -84,12 +85,15 @@ def register():
         "display_name": user["display_name"],
         "registered_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(32)
 
     return (
         jsonify({
             "status": "ok",
             "message": f"Account created! Welcome, {user['username']}!",
             "user": session["user"],
+            "csrf_token": session["csrf_token"],
         }),
         201,
     )
@@ -126,12 +130,15 @@ def login():
         "display_name": user["display_name"],
         "logged_in_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(32)
 
     return (
         jsonify({
             "status": "ok",
             "message": f"Welcome back, {user['username']}!",
             "user": session["user"],
+            "csrf_token": session["csrf_token"],
         }),
         200,
     )
@@ -149,10 +156,13 @@ def logout():
 def me():
     """Return currently authenticated user profile."""
     user = get_current_user()
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(32)
     return (
         jsonify({
             "authenticated": bool(user),
             "user": user,
+            "csrf_token": session["csrf_token"],
         }),
         200,
     )
