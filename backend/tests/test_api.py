@@ -157,6 +157,41 @@ class TestGenerateEndpoint:
         assert "job_id" in data
         assert data["status"] == "queued"
 
+    def test_csrf_render_origin_accepted(self, client):
+        with client.session_transaction() as sess:
+            sess["csrf_token"] = "valid_token"
+
+        resp = client.post(
+            "/api/generate",
+            json={"prompt": "knight walking", "grid": "1x4", "style": "pixel_art"},
+            headers={
+                "X-CSRF-Token": "valid_token",
+                "Origin": "https://spriteforge.onrender.com",
+            },
+        )
+        assert resp.status_code == 202
+        data = resp.get_json()
+        assert "job_id" in data
+        assert data["status"] == "queued"
+
+    def test_csrf_forwarded_host_accepted(self, client):
+        with client.session_transaction() as sess:
+            sess["csrf_token"] = "valid_token"
+
+        resp = client.post(
+            "/api/generate",
+            json={"prompt": "knight walking", "grid": "1x4", "style": "pixel_art"},
+            headers={
+                "X-CSRF-Token": "valid_token",
+                "Origin": "https://mygame.com",
+                "X-Forwarded-Host": "mygame.com",
+            },
+        )
+        assert resp.status_code == 202
+        data = resp.get_json()
+        assert "job_id" in data
+        assert data["status"] == "queued"
+
     def test_invalid_payload_rejected(self, client):
         with client.session_transaction() as sess:
             sess["csrf_token"] = "valid_token"

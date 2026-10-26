@@ -28,13 +28,23 @@ const SpriteForgeAuth = (() => {
     return { ok: resp.ok, status: resp.status, data };
   }
 
+  function _syncCsrf(token) {
+    if (token) {
+      const csrfInput = document.getElementById('csrf-token');
+      if (csrfInput) csrfInput.value = token;
+    }
+  }
+
   async function checkSession() {
     try {
       const { ok, data } = await _apiJson('/api/auth/me');
-      if (ok && data.authenticated) {
-        _user = data.user;
-        _updateNavbarUser();
-        return true;
+      if (ok) {
+        _syncCsrf(data.csrf_token);
+        if (data.authenticated) {
+          _user = data.user;
+          _updateNavbarUser();
+          return true;
+        }
       }
     } catch (_) {}
     _user = null;
@@ -45,6 +55,7 @@ const SpriteForgeAuth = (() => {
   async function login(username, password) {
     const { ok, data } = await _apiJson('/api/auth/login', 'POST', { username, password });
     if (ok) {
+      _syncCsrf(data.csrf_token);
       _user = data.user;
       _updateNavbarUser();
     }
@@ -54,6 +65,7 @@ const SpriteForgeAuth = (() => {
   async function register(username, password) {
     const { ok, data } = await _apiJson('/api/auth/register', 'POST', { username, password });
     if (ok) {
+      _syncCsrf(data.csrf_token);
       _user = data.user;
       _updateNavbarUser();
     }
