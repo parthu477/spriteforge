@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from io import BytesIO
 from typing import Any
 
@@ -283,33 +285,60 @@ def apply_retro_postprocessing(
 # Module-level rembg session singleton (loaded once)
 _rembg_session: Any = None
 _rembg_model_name: str | None = None
+_rembg_lock = threading.Lock()
 
 
 def _get_rembg_session(model: str = "u2netp") -> Any:
     global _rembg_session, _rembg_model_name
-    if _rembg_session is None or _rembg_model_name != model:
-        import rembg  # type: ignore
-        import onnxruntime as ort
+    with _rembg_lock:
+        if _rembg_session is None or _rembg_model_name != model:
+            import rembg  # type: ignore
+            import onnxruntime as ort
 
-        sess_opts = ort.SessionOptions()
-        sess_opts.intra_op_num_threads = 1
-        sess_opts.inter_op_num_threads = 1
-        sess_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            sess_opts = ort.SessionOptions()
+            sess_opts.intra_op_num_threads = 1
+            sess_opts.inter_op_num_threads = 1
+            sess_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
-        log.info("Initialising rembg session with model '%s' (single-threaded for cloud)…", model)
-        _rembg_session = rembg.new_session(model, sess_opts=sess_opts)
-        _rembg_model_name = model
-    return _rembg_session
+            log.info("Initialising rembg session with model '%s' (single-threaded for cloud)…", model)
+            _rembg_session = rembg.new_session(model, sess_opts=sess_opts)
+            _rembg_model_name = model
+        return _rembg_session
 
 
 # ── Background removal (US-10) ────────────────────────────────
+
+def _vectorized_chroma_key(img: Image.Image) -> Image.Image:
+    """Fast vectorized corner-based chroma keying fallback."""
+    arr = np.array(img.convert("RGBA"))
+    corners = np.array([arr[0, 0, :3], arr[0, -1, :3], arr[-1, 0, :3], arr[-1, -1, :3]], dtype=np.float32)
+    avg_corner = np.mean(corners, axis=0)
+    dist = np.sqrt(np.sum((arr[..., :3].astype(np.float32) - avg_corner) ** 2, axis=-1))
+
+    # Try thresholds to ensure valid alpha coverage in [0.01, 0.95]
+    for thresh in (32.0, 48.0, 64.0, 24.0):
+        mask = dist >= thresh
+        cov = float(np.count_nonzero(mask)) / mask.size
+        if 0.01 <= cov <= 0.95:
+            arr_copy = arr.copy()
+            arr_copy[~mask, 3] = 0
+            return Image.fromarray(arr_copy)
+
+    arr[dist < 32.0, 3] = 0
+    return Image.fromarray(arr)
+
 
 def remove_background(
     img: Image.Image,
     rembg_model: str = "u2netp",
     alpha_threshold: int = 16,
+    timeout_s: float = 10.0,
 ) -> Image.Image:
     """Strip solid background with rembg, clean near-transparent edges.
+
+    Wraps rembg execution in a ThreadPoolExecutor with a strict timeout (default 10s).
+    If rembg exceeds the timeout or encounters an error, aborts and immediately
+    falls back to fast vectorized corner-based chroma-keying.
 
     Raises ValueError if alpha coverage is outside [0.01, 0.95].
     """
@@ -323,21 +352,30 @@ def remove_background(
             return img
 
     result: Image.Image | None = None
-    try:
+
+    def _run_rembg() -> Image.Image:
         import rembg  # type: ignore
 
         session = _get_rembg_session(rembg_model)
         # Pass PIL image directly to eliminate costly PNG compression/decompression overhead
-        result = rembg.remove(img, session=session).convert("RGBA")
+        return rembg.remove(img, session=session).convert("RGBA")
+
+    # Strict timeout execution via ThreadPoolExecutor
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_run_rembg)
+    try:
+        result = future.result(timeout=timeout_s)
+    except TimeoutError:
+        log.warning(
+            "rembg background removal timed out after %.1fs; using fast vectorized keying fallback.",
+            timeout_s,
+        )
+        result = _vectorized_chroma_key(img)
     except Exception as exc:
-        log.warning("rembg unavailable (%s); using fast vectorized keying fallback.", exc)
-        arr = np.array(img.convert("RGBA"))
-        # Fast vectorized corner-based chroma keying fallback
-        corners = np.array([arr[0, 0, :3], arr[0, -1, :3], arr[-1, 0, :3], arr[-1, -1, :3]], dtype=np.float32)
-        avg_corner = np.mean(corners, axis=0)
-        dist = np.sqrt(np.sum((arr[..., :3].astype(np.float32) - avg_corner) ** 2, axis=-1))
-        arr[dist < 32.0, 3] = 0
-        result = Image.fromarray(arr)
+        log.warning("rembg unavailable or failed (%s); using fast vectorized keying fallback.", exc)
+        result = _vectorized_chroma_key(img)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     # Alpha threshold clean-up: clamp near-transparent pixels to 0 using fast LUT
     if alpha_threshold > 0:

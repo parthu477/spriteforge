@@ -305,3 +305,24 @@ class TestRetroPostProcessing:
         assert avg_ms < 100.0, f"Post-processing took {avg_ms:.2f}ms, which exceeds 100ms limit"
 
 
+class TestRemoveBackgroundTimeout:
+    def test_timeout_falls_back_to_chroma_key(self, monkeypatch):
+        import time
+        from backend.services.processing import remove_background
+
+        # White background with colored center square
+        img = Image.new("RGB", (100, 100), (255, 255, 255))
+        for y in range(25, 75):
+            for x in range(25, 75):
+                img.putpixel((x, y), (200, 50, 50))
+
+        # Test with an ultra-short timeout that immediately times out
+        res = remove_background(img, timeout_s=0.00001)
+        assert res.mode == "RGBA"
+        # Corners should be transparent
+        assert res.getpixel((0, 0))[3] == 0
+        # Center should remain opaque
+        assert res.getpixel((50, 50))[3] == 255
+
+
+
