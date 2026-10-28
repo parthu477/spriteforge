@@ -411,6 +411,9 @@ class GameSandbox {
         this.audio.startFuelAlert?.();
       }
     }
+
+    // Re-arm the RAF loop that was halted during pause (performance fix)
+    this._raf = requestAnimationFrame(t => this._loop(t));
   }
 
   _updatePauseSoundBtn() {
@@ -740,11 +743,13 @@ class GameSandbox {
         else type = 'ramp';
       }
 
-      let w = 36;
-      let h = 28;
-      if (type === 'barrier') { w = 30; h = 32; }
-      else if (type === 'spike') { w = 34; h = 26; }
-      else if (type === 'ramp') { w = 48; h = 26; }
+      // Scale up obstacle dimensions 1.5x–2x for better visibility and fair hitboxes.
+      // spike uses 2x; rock and barrier use 1.5x; ramp is widened 1.5x.
+      let w = 54;   // rock: was 36 → 1.5x
+      let h = 42;   // rock: was 28 → 1.5x
+      if (type === 'barrier') { w = 45; h = 48; }  // was 30×32 → 1.5x
+      else if (type === 'spike') { w = 60; h = 46; } // was 34×26 → ~1.75x
+      else if (type === 'ramp') { w = 72; h = 39; }  // was 48×26 → 1.5x
 
       this.obstacles.push({
         wx: this._lastObstacleSpawnX,
@@ -769,8 +774,8 @@ class GameSandbox {
         this.obstacles.push({
           wx: hazardX,
           type: hazardType,
-          w: hazardType === 'spike' ? 34 : 36,
-          h: hazardType === 'spike' ? 26 : 28,
+          w: hazardType === 'spike' ? 60 : 54,   // scaled up
+          h: hazardType === 'spike' ? 46 : 42,   // scaled up
           hit: false,
           cleared: false,
           used: false,
@@ -783,18 +788,21 @@ class GameSandbox {
   }
 
   _cullCollectibles() {
-    // Cull off-screen items behind camera cutoff (zero memory leaks)
-    const cutoff = this.cameraX - 500;
+    // Cull off-screen items behind camera cutoff (zero memory leaks).
+    // Use a tighter rear window (300px) and also drop far-ahead items that are
+    // already hit/collected to reduce the active array sizes.
+    const cutoff = this.cameraX - 300;
     this.coins     = this.coins.filter(c => !c.collected && c.wx >= cutoff);
     this.fuelCans  = this.fuelCans.filter(fc => !fc.collected && fc.wx >= cutoff);
-    this.obstacles = this.obstacles.filter(obs => obs.wx >= cutoff);
+    this.obstacles = this.obstacles.filter(obs => (obs.hit || obs.cleared) ? obs.wx >= cutoff : obs.wx >= cutoff);
   }
 
   /* ── Main Loop ───────────────────────────────────────────────── */
   _loop(timestamp) {
+    // While paused: do NOT schedule another rAF — resume() will re-arm the loop.
+    // This eliminates wasted CPU/GPU time during pause and prevents stacked frames.
     if (this.isPaused) {
-      this._lastTime = timestamp; // Cache timestamp while suspended to avoid dt jump
-      this._raf = requestAnimationFrame(t => this._loop(t));
+      this._lastTime = timestamp;
       return;
     }
     const dt = Math.min((timestamp - this._lastTime) / 1000, 0.05); // cap at 50ms
@@ -867,9 +875,11 @@ class GameSandbox {
         }
       }
     } else {
-      // Vehicle mode, mid-air: A/D or ←/→ apply rotational torque
-      if (gasDown)   car.angle += 95 * dt;  // Clockwise tilt-right
-      if (brakeDown) car.angle -= 95 * dt;  // Counter-clockwise tilt-left
+      // Vehicle mode, mid-air: air-tilt controls.
+      // Gas (Up/W/Right/D) = nose-up (backward tilt) = counter-clockwise = negative angle.
+      // Brake (Down/S/Left/A) = nose-down (forward tilt) = clockwise = positive angle.
+      if (gasDown)   car.angle -= 95 * dt;  // Counter-clockwise: tilt backward / nose up
+      if (brakeDown) car.angle += 95 * dt;  // Clockwise: tilt forward / nose down
     }
 
     // Friction & max speed
@@ -997,8 +1007,11 @@ class GameSandbox {
       particles.emitExhaust(screenCarX - 52, car.y + 10, car.speed);
     }
 
-    // ── Procedural Endless Generation Ahead ─────────────────────
-    this._generateCollectiblesAhead(this.cameraX + this.W + 1600);
+    // ── Procedural Endless Generation Ahead (throttled: only when near the frontier)
+    const genHorizon = this.cameraX + (this.W || 800) + 1600;
+    if (this._lastCoinSpawnX < genHorizon || this._lastFuelSpawnX < genHorizon || this._lastObstacleSpawnX < genHorizon) {
+      this._generateCollectiblesAhead(genHorizon);
+    }
 
     // ── Coin collection ─────────────────────────────────────────
     this.coins.forEach(coin => {
@@ -1549,93 +1562,105 @@ class GameSandbox {
     }
 
     if (obs.type === 'rock') {
-      // Rugged boulder with polygonal crags and highlights
+      // Rugged boulder — scaled 1.5x (coords ×1.5 from original)
       ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 8;
       ctx.fillStyle = biomeId === 'moon' ? '#64748B' : (biomeId === 'desert' ? '#92400E' : (biomeId === 'cyberpunk' ? '#334155' : '#57534E'));
       ctx.beginPath();
-      ctx.moveTo(-18, 0);
-      ctx.lineTo(-20, -14);
-      ctx.lineTo(-12, -26);
-      ctx.lineTo(4, -28);
-      ctx.lineTo(16, -18);
-      ctx.lineTo(20, 0);
+      ctx.moveTo(-27, 0);
+      ctx.lineTo(-30, -21);
+      ctx.lineTo(-18, -39);
+      ctx.lineTo(6, -42);
+      ctx.lineTo(24, -27);
+      ctx.lineTo(30, 0);
       ctx.closePath();
       ctx.fill();
       // Highlight facet
       ctx.fillStyle = biomeId === 'moon' ? '#94A3B8' : (biomeId === 'desert' ? '#D97706' : (biomeId === 'cyberpunk' ? '#00F0FF' : '#78716C'));
       ctx.beginPath();
-      ctx.moveTo(-12, -26);
-      ctx.lineTo(4, -28);
-      ctx.lineTo(0, -12);
-      ctx.lineTo(-14, -10);
+      ctx.moveTo(-18, -39);
+      ctx.lineTo(6, -42);
+      ctx.lineTo(0, -18);
+      ctx.lineTo(-21, -15);
       ctx.closePath();
       ctx.fill();
     } else if (obs.type === 'barrier') {
-      // Hazard barricade with striped yellow/black warning pattern & beacon
+      // Hazard barricade scaled 1.5x
       ctx.fillStyle = '#475569';
-      ctx.fillRect(-15, -30, 4, 30);
-      ctx.fillRect(11, -30, 4, 30);
+      ctx.fillRect(-22, -45, 6, 45);
+      ctx.fillRect(16, -45, 6, 45);
       // Crossbars with diagonal stripes
       ctx.fillStyle = '#F59E0B';
-      ctx.fillRect(-18, -26, 36, 10);
+      ctx.fillRect(-27, -39, 54, 15);
       ctx.fillStyle = '#0F172A';
-      for (let bx = -16; bx < 18; bx += 8) {
+      for (let bx = -24; bx < 27; bx += 12) {
         ctx.beginPath();
-        ctx.moveTo(bx, -26);
-        ctx.lineTo(bx + 4, -26);
-        ctx.lineTo(bx, -16);
-        ctx.lineTo(bx - 4, -16);
+        ctx.moveTo(bx, -39);
+        ctx.lineTo(bx + 6, -39);
+        ctx.lineTo(bx, -24);
+        ctx.lineTo(bx - 6, -24);
         ctx.closePath();
         ctx.fill();
       }
-      // Top blinking warning light
+      // Top blinking warning light — larger beacon
       const blink = Math.sin(performance.now() * 0.008) > 0;
       ctx.shadowColor = '#EF4444';
-      ctx.shadowBlur = blink ? 10 : 2;
+      ctx.shadowBlur = blink ? 14 : 3;
       ctx.fillStyle = blink ? '#EF4444' : '#7F1D1D';
       ctx.beginPath();
-      ctx.arc(0, -32, 4.5, 0, Math.PI * 2);
+      ctx.arc(0, -48, 6.5, 0, Math.PI * 2);
       ctx.fill();
     } else if (obs.type === 'spike') {
-      // Sharp triangular hazard spikes / laser crystals
+      // Sharp triangular hazard spikes scaled ~1.75x — more visible & threatening
       ctx.shadowColor = biomeId === 'cyberpunk' ? '#FF007F' : '#DC2626';
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 14;
       ctx.fillStyle = biomeId === 'cyberpunk' ? '#FF007F' : (biomeId === 'moon' ? '#38BDF8' : '#DC2626');
-      [-14, -2, 10].forEach((ox, i) => {
-        const sh = 18 + (i % 2) * 8;
+      // Three spikes: taller and wider
+      [-22, -3, 16].forEach((ox, i) => {
+        const sh = 32 + (i % 2) * 14; // was 18+(i%2)*8
         ctx.beginPath();
-        ctx.moveTo(ox - 5, 0);
+        ctx.moveTo(ox - 8, 0);
         ctx.lineTo(ox, -sh);
-        ctx.lineTo(ox + 5, 0);
+        ctx.lineTo(ox + 8, 0);
+        ctx.closePath();
+        ctx.fill();
+      });
+      // Glowing inner highlight for better readability
+      ctx.fillStyle = biomeId === 'cyberpunk' ? 'rgba(255,0,127,0.35)' : 'rgba(255,80,80,0.35)';
+      [-22, -3, 16].forEach((ox, i) => {
+        const sh = 32 + (i % 2) * 14;
+        ctx.beginPath();
+        ctx.moveTo(ox - 4, 0);
+        ctx.lineTo(ox, -sh * 0.6);
+        ctx.lineTo(ox + 4, 0);
         ctx.closePath();
         ctx.fill();
       });
     } else if (obs.type === 'ramp') {
-      // Inclined launch springboard ramp with chevrons
+      // Inclined launch springboard ramp scaled 1.5x
       ctx.shadowColor = '#FACC15';
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 8;
       ctx.fillStyle = '#EAB308';
       ctx.beginPath();
-      ctx.moveTo(-24, 0);
-      ctx.lineTo(24, -24);
-      ctx.lineTo(24, 0);
+      ctx.moveTo(-36, 0);
+      ctx.lineTo(36, -36);
+      ctx.lineTo(36, 0);
       ctx.closePath();
       ctx.fill();
       // Ramp chevrons
       ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2.5;
-      [-10, 2, 14].forEach(rx => {
-        const ry = -((rx + 24) / 48) * 24;
+      ctx.lineWidth = 3.0;
+      [-15, 3, 21].forEach(rx => {
+        const ry = -((rx + 36) / 72) * 36;
         ctx.beginPath();
-        ctx.moveTo(rx - 3, ry + 6);
-        ctx.lineTo(rx + 2, ry);
-        ctx.lineTo(rx - 3, ry - 6);
+        ctx.moveTo(rx - 4, ry + 8);
+        ctx.lineTo(rx + 3, ry);
+        ctx.lineTo(rx - 4, ry - 8);
         ctx.stroke();
       });
       // Launch lip
       ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(21, -26, 3, 26);
+      ctx.fillRect(33, -39, 4, 39);
     }
 
     ctx.restore();
